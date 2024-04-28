@@ -3,9 +3,9 @@ Content-Type: application/json
 
 
 {
-    "name":"albums of Canada",
+    "name":"album of Canada",
     "genre":"electronic",
-    "albums":[
+    "album":[
         {
             "title":"testMeUP",
             "release_date":"2013-12-12"
