@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
-from contextlib import asynccontextmanager
+
+
 from db import init_db, get_session
 from models import BandCreate, Band, Album, AlbumBase
 from sqlmodel import Session
@@ -14,14 +15,18 @@ BANDS = [
     }
 ]
 
+# TODO: probably want to have a user for "alembic" in the database
+# Removing this so alembic manages the database vs fastApi
+# alembic revision --autogenerate -m "initial migration"
+# alembic upgrade head
+# from contextlib import asynccontextmanager
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     init_db()
+#     yield
+# app = FastAPI(lifespan=lifespan)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    init_db()
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 
 @app.post("/bands", response_model=BandCreate)
@@ -29,7 +34,9 @@ async def create_band(
     band_data: BandCreate, session: Session = Depends(get_session)
 ) -> Band:
 
-    band = Band(name=band_data.name, genre=band_data.genre)
+    band = Band(
+        name=band_data.name, genre=band_data.genre, date_formed=band_data.date_formed
+    )
     session.add(band)
     session.commit()  # Commit the session after adding the band
 

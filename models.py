@@ -63,6 +63,7 @@ class BandBase(Timestamp, SQLModel):
 
 class BandCreate(BandBase):
     albums: list[Album] | None = None
+    date_formed: date | None
 
     @validate_call  # Use this decorator before the method
     def title_case_genre(cls, genre: GenreChoices | str) -> str:
@@ -75,3 +76,4 @@ class BandCreate(BandBase):
 class Band(BandBase, table=True):
     id: int = Field(default=None, primary_key=True)
     albums: list[Album] = Relationship(back_populates="band")
+    date_formed: date | None
