@@ -1,0 +1,20 @@
+POST http://localhost:8000/bands
+Content-Type: application/json
+
+
+{
+    "name":"albums of Canada",
+    "genre":"electronic",
+    "albums":[
+        {
+            "title":"testMeUP",
+            "release_date":"2013-12-12"
+        },
+        {
+            "title":"twee",
+            "release_date":"2014-12-12"
+        }
+    ]
+
+}
+
