@@ -1,7 +1,5 @@
 from fastapi import FastAPI
-
-
-from api import band, album
+from api import band, album, user, special
 
 
 # TODO: probably want to have a user for "alembic" in the database
@@ -16,6 +14,7 @@ from api import band, album
 #     yield
 # app = FastAPI(lifespan=lifespan)
 
+
 app = FastAPI(
     title="Hello World",
     description="Learning to code",
@@ -27,3 +26,5 @@ app = FastAPI(
 
 app.include_router(band.router)
 app.include_router(album.router)
+app.include_router(user.router)
+app.include_router(special.router)

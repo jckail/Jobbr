@@ -12,6 +12,9 @@ alembic revision --autogenerate -m "Git Branch Name"
 
 
 #TODO: 
+0. Add in authenticaion 
+   1. Tie to user session
+   2. Log actions in session
 1. Figure out poetry
 2. setup correct docker compose for app deployment
 3. understand session tracking
