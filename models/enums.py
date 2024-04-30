@@ -13,3 +13,8 @@ class GenreChoices(Enum):
     ELECTRONIC = "Electronic"
     METAL = "Metal"
     HIP_HOP = "Hip-Hop"
+
+
+class URLType(Enum):
+    ROLE = "Role"
+    ROLEHUB = "RoleHub"

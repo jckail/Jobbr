@@ -1,23 +1,32 @@
 import fastapi
-from fastapi import HTTPException, status, Depends, Header, Request
-from fastapi.security import APIKeyHeader, OAuth2PasswordBearer, HTTPBearer
+from fastapi import HTTPException, status, Depends, Header, Request, Security
+from fastapi.security import (
+    APIKeyHeader,
+    OAuth2PasswordBearer,
+    HTTPBearer,
+    OAuth2AuthorizationCodeBearer,
+)
 from jose import jwt, JWTError
 
 from models import User, UserBase, TokenData, Token
 
-tags_metadata = ["special"]
-router = fastapi.APIRouter(tags=tags_metadata)
+
+from typing import List, Optional
 
 SECRET_KEY = "e26da5723c636703177cf3f036cfab42efdf11d79f632a79cb40daacf6e006be"
 ALGORITHM = "HS256"
+tags_metadata = ["special"]
+router = fastapi.APIRouter(tags=tags_metadata)
 
 
-async def validate_token(access_token: str = Header(...)):
+def api_key_validation(api_key, header_name: str, scopes: List[str]):
     """
     Validates the access token and checks if it has the required scope.
 
     Args:
-        access_token (str): The access token to be validated.
+        api_key (str): The access token to be validated.
+        header_name (str): The name of the header containing the access token.
+        scopes (List[str]): The list of required scopes.
 
     Raises:
         HTTPException: If the access token is invalid, doesn't have the required scope,
@@ -29,8 +38,12 @@ async def validate_token(access_token: str = Header(...)):
     """
     scope = "special"
     try:
-        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
-        if scope not in payload.get("scope", ""):
+        if not api_key:
+            raise HTTPException(
+                status_code=403, detail=f"api_key is None: api_key: {api_key}"
+            )
+        payload = jwt.decode(api_key, SECRET_KEY, algorithms=[ALGORITHM])
+        if scopes != payload.get("scopes", ""):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Insufficient scope. requires {scope}",
@@ -39,40 +52,43 @@ async def validate_token(access_token: str = Header(...)):
     except JWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credential {e}",
+            detail=f"Could not validate credential {e} {header_name}",
         )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid access_token header format {e}",
+            detail=f"Invalid api_key header format {e}",
         )
     except AttributeError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"access_token header must be provided {e}",
+            detail=f"api_key header must be provided {e}",
         )
 
 
-@router.post("/helloworld/")
-async def protected_endpoint(
-    payload: dict = Depends(validate_token),
+async def secure_key(api_key: str = Header(None)):
+    return api_key
+
+
+async def get_api_key(
+    api_key: str = Security(APIKeyHeader(name="api_key", auto_error=False))
 ):
-    """
-    This endpoint is used to handle authorized requests.
+    if api_key != "":
+        return api_key
+    else:
+        raise HTTPException(
+            status_code=403, detail="Could not fetch header credentials"
+        )
 
-    Parameters:
-    - payload (dict): The payload containing the request data.
 
-    Returns:
-    - dict: A dictionary containing the response message.
-    """
-    # Check if the Authorization header is present and valid
-    # data = validate_token(authtoken)
-    # if data:
-    #     # Extract the JSON body from the request
-    #     # data = await request.json()
-    #     return {"message": "Authorized access!", "your_data": data}
-    # else:
-    #     raise HTTPException(status_code=401, detail="Unauthorized")
+@router.get("/protectedExample")
+def main(
+    api_key: Optional[str] = Security(secure_key),
+    header_api_key: str = Security(get_api_key),
+):
+    required_scopes = ["special"]
+    # authorization = request.headers.get("Authorization")
+    api_key if api_key else header_api_key
 
-    return {"hello": "world"}
+    payload = api_key_validation(api_key, "magic", required_scopes)
+    return payload

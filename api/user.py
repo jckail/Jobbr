@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from db import get_session
 from models import User, UserBase, TokenData, Token
+from typing import List
 
 
 tags_metadata = ["user"]
@@ -152,28 +153,42 @@ async def register_user(
     return {"message": "User registered successfully"}
 
 
-def generate_special_token(data: dict, scope: str, expires_delta: timedelta = None):
+def generate_special_token(data: dict, scopes: List[str], expires_delta: int = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.utcnow() + timedelta(minutes=expires_delta)
     else:
         expire = datetime.utcnow() + timedelta(
             minutes=15
         )  # Default to 15 minutes if not specified
-    to_encode.update({"exp": expire, "scope": scope})  # Add scope to the token payload
+    to_encode.update(
+        {"exp": expire, "scopes": scopes}
+    )  # Add scope to the token payload
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 
 ##TODO: For all tokens other than login save these to a database to revoke all etc
-@router.get("/special/", response_model=Token)
+@router.get("/special", response_model=Token)
 async def genSpecial(
+    scopes: List[str] = Header(["special"]),
+    expire_time_minutes: int = Header(15),
+    # default is 15 make this a look up to the scopes passed
     current_token: Token = Depends(get_current_token),
     session: Session = Depends(get_session),
 ):
     user = session.query(User).filter(User.id == current_token.user_id).first()
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
+
+    # scopes = ["special"]
+    # if scopesx:
+    #     scopes = [scopesx]
+    # expire_time_minutes = 5
+    # if expire_time_minutesx:
+    #     expire_time_minutes = expire_time_minutesx
     access_token = generate_special_token(
-        data={"sub": str(user.id)}, scope="special", expires_delta=access_token_expires
+        data={"sub": str(user.id)}, scopes=scopes, expires_delta=expire_time_minutes
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "access_token"}
+
+
+# eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MTFiZmIwYS1hZDBlLTQyYjItODI1OS1kMTVhMDcwNTFiNzciLCJleHAiOjE3MTQ0MDUzODUsInNjb3BlcyI6WyJzcGVjaWFsIl19.g2UcL8hZkIbgAxRX925sFWej8XHodCCPErGj-LxgwuQ
