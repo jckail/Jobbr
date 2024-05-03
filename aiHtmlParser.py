@@ -1,267 +1,24 @@
-# use with structuredoutput
-
-# https://python.langchain.com/docs/modules/model_io/chat/structured_output/
 import glob
-from datetime import datetime
 import random
 import os
 import time
-from magentic import (
-    chatprompt,
-    AssistantMessage,
-    SystemMessage,
-    UserMessage,
-    OpenaiChatModel,
-)
-from sqlmodel import SQLModel, Field
-from uuid import UUID, uuid4
-from pydantic import BaseModel, HttpUrl
-from typing import Optional, List
 
-from models.mixins import BaseMixin
-from sqlalchemy.dialects import postgresql
-from sqlmodel import (
-    Field,
-    Session,
-    SQLModel,
-    create_engine,
-    JSON,
-    Column,
-    String,
-    Integer,
-)
+
+from sqlmodel import Session
+
+
 from db import init_db, engine
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
-
+from models import (
+    AIFunctionRunBase,
+    AIFunctionRun,
+    AIFunctionResult,
+    Stg_RoleBase,
+    Stg_Role,
+)
+from ai import htmlParsers
 
 ##TODO create timer functions so that we can better see timing
 ## TODO test against langchain outputs etc its going to be better than this i think
-class StageRoleBase(BaseMixin, SQLModel):
-    """
-    Pydantic Basemodel
-
-    company_name (str): The name of the company associated with the role.
-    title (str): The title of the role.
-    description (str)): A short under 75 word description and responsibilities and expectations of the role and not of the company.
-    location (str): A list of locations avalible for the role IE: city,state San Francisco, California or Atlanta, Georgia.
-    remote (str)): If the role allows remote work in any capacity.
-    in_person (str)): If the role requires the person to go into the office or be in person.
-    travel (str): The travel frequency requirements of the role.
-    soft_skills (List[str]): The soft skills required for the role.
-    technical_skills (List[str]): The technical skills required for the role.
-    certifications (List[str]): Ideal certifications for the role.
-    years_of_experience (int): The estimated years of experience for the role.
-    prior_experience_description (str): Description of any desired previous experience.
-    estimated_career_level (str): An estimation of what level at the company this is IE is a junior, midlevel, senior, manager, director or leadership role could be another value.
-    estimated_min_compensation (int): The estimated minimum compensation for the role.
-    estimated_max_compensation (int): The estimated maximum compensation for the role.
-    compensation_description (str): Details around the compensation for the role including a range.
-    pto_and_benefits (str): The benefits and PTO information for the role.
-    role_quirks (str): Anything that stands out about the role being unique or bizzare.
-    ai_analysis (str): This field should be blank.
-    estimated_status (str): This is a best guess if the role is still avalible based on there being a job description on the page.
-
-
-    """
-
-    company_name: str
-    title: Optional[str]
-    description: Optional[str]
-    location: Optional[str]
-    remote: Optional[str]
-    in_person: Optional[str]
-    travel: Optional[str]
-    soft_skills: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
-    )
-    technical_skills: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
-    )
-    certifications: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
-    )
-    years_of_experience: Optional[int]
-    prior_experience_description: Optional[str]
-    estimated_career_level: Optional[str]
-    education_requirement: Optional[str]
-    estimated_min_compensation: Optional[int]
-    estimated_max_compensation: Optional[int]
-    compensation_description: Optional[str]
-    pto_and_benefits: Optional[str]
-    role_quirks: Optional[str]
-    ai_analysis: Optional[str] = None
-    estimated_status: Optional[str]
-
-    class Config:
-        """
-        Pydantic model configuration.
-
-        Configures the model settings, such as enabling ORM mode.
-        """
-
-        from_attributes = True  # if using Pydantic v2
-
-
-class StageRole(StageRoleBase, table=True):
-    """
-    id the uuid of the record
-    file_source the source file of the role
-    url : the orignal URL from the previous call
-    """
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)  # backpopulates u
-    AIFunctionRun_id: UUID
-    file_source: Optional[str]
-    url: Optional[str]
-    status: Optional[str]
-
-
-class AIFunctionRunBase(BaseMixin, SQLModel):
-    """
-    id the uuid of the record
-    file_source the source file of the role
-    url : the orignal URL from the previous call
-    """
-
-    ## ADD IN PROMPT for user and system
-    ## add in contexts and sources
-    ## follow langchain terms
-    input_model: str
-    tokenCount: int
-    function: str
-    tries: int
-    file_source: Optional[str]
-    url: Optional[str]
-    run_start_utc: int = Field(
-        default_factory=lambda: int(datetime.now().timestamp()), nullable=False
-    )
-    # add in query
-
-
-class AIFunctionRun(AIFunctionRunBase, table=True):
-    """
-    id the uuid of the record
-    file_source the source file of the role
-    url : the orignal URL from the previous call
-    """
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)  # backpopulates u
-    # add in query
-
-
-class AIFunctionResult(AIFunctionRunBase, table=True):
-    id: UUID = Field(default_factory=uuid4, primary_key=True)  # backpopulates u
-    AIFunctionRun_id: UUID
-    success: bool
-    message: str
-    # Adding new fields to store additional metadata
-    model: Optional[str] = Field(default=None, description="The model used for the run")
-    response_id: Optional[str] = Field(
-        default=None, description="Response ID of the model"
-    )
-    stop_reason: Optional[str] = Field(
-        default=None, description="Reason why the model stopped"
-    )
-    stop_sequence: Optional[str] = Field(
-        default=None, description="Sequence at which the model stopped"
-    )
-    input_tokens: Optional[int] = Field(
-        default=0, description="Number of input tokens used"
-    )
-    output_tokens: Optional[int] = Field(
-        default=0, description="Number of output tokens generated"
-    )
-    parsing_error: Optional[str] = Field(
-        default=0, description="Parsing Errors Encountered"
-    )
-    run_completion_utc: int = Field(
-        default_factory=lambda: int(datetime.now().timestamp()), nullable=False
-    )
-
-
-systemMessage = "Parse the information on a job posting to the exact json format I am requesting to the best of your ability for fields that are."
-userMessage = "Parse this data {html} to the exact format I am requesting."
-
-
-# @chatprompt(
-#     SystemMessage(systemMessage),
-#     UserMessage(userMessage),
-#     model=OpenaiChatModel("gpt-3.5-turbo"),
-# )
-# def parseHTML35(html: str) -> StageRoleBase: ...
-
-
-# @chatprompt(
-#     SystemMessage(systemMessage),
-#     UserMessage(userMessage),
-# )
-# def parseHTML4(html: str) -> StageRoleBase: ...
-
-
-f = """
-    Pydantic Basemodel
-
-    company_name (str): The name of the company associated with the role.
-    title (str): The title of the role.
-    description (str)): A short under 75 word description and responsibilities and expectations of the role and not of the company.
-    location (str): A list of locations avalible for the role IE: city,state San Francisco, California or Atlanta, Georgia.
-    remote (str)): If the role allows remote work in any capacity.
-    in_person (str)): If the role requires the person to go into the office or be in person.
-    travel (str): The travel frequency requirements of the role.
-    soft_skills (List[str]): The soft skills required for the role.
-    technical_skills (List[str]): The technical skills required for the role.
-    certifications (List[str]): Ideal certifications for the role.
-    years_of_experience (int): The estimated years of experience for the role.
-    prior_experience_description (str): Description of any desired previous experience.
-    estimated_career_level (str): An estimation of what level at the company this is IE is a junior, midlevel, senior, manager, director or leadership role could be another value.
-    estimated_min_compensation (int): The estimated minimum compensation for the role.
-    estimated_max_compensation (int): The estimated maximum compensation for the role.
-    compensation_description (str): Details around the compensation for the role including a range.
-    pto_and_benefits (str): The benefits and PTO information for the role.
-    role_quirks (str): Anything that stands out about the role being unique or bizzare.
-    ai_analysis (str): This field should be blank.
-    estimated_status (str): This is a best guess if the role is still avalible based on there being a job description on the page.
-
-
-    """
-
-
-def parseHTMLClaud3(html):
-    userMessage = f"Parse the following job posting text into JSON format {f} according to the specified structure. Ensure that all requested fields are included in the output. If any data is missing or unavailable, populate them as None (use null values). Some details may not be explicitly mentioned, do your best to infer them. Here is the text: {html}"
-    model = ChatAnthropic(
-        model="claude-3-opus-20240229", temperature=0
-    )  # claude-3-haiku-20240307 # claude-3-sonnet-20240229 #claude-3-opus-20240229
-    structured_llm = model.with_structured_output(StageRoleBase, include_raw=True)
-    # print(structured_llm)
-    # print(userMessage)
-    return structured_llm.invoke(input=userMessage)
-
-
-def parseHTMLgpt3(html):
-    userMessage = f" Convert the following job posting text to exactly the desired json format {f}. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None. If there is a mention of 'not found' assume the role has been filled and the status is closed. Here is the job posting: {html}"
-    model = ChatOpenAI(
-        model="gpt-3.5-turbo-0125", temperature=0
-    )  # claude-3-haiku-20240307 # claude-3-sonnet-20240229 #claude-3-opus-20240229
-    structured_llm = model.with_structured_output(
-        StageRoleBase, include_raw=True, method="json_mode"
-    )
-    # print(structured_llm)
-    # print(userMessage)
-    return structured_llm.invoke(input=userMessage)
-
-
-def parseHTMLgpt4(html):
-    userMessage = f" Convert the following job posting text to exactly the desired json format {f}. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None. If there is a mention of 'not found' assume the role has been filled and the status is closed. Here is the job posting: {html}"
-    model = ChatOpenAI(
-        model="gpt-4-turbo-2024-04-09", temperature=0
-    )  # claude-3-haiku-20240307 # claude-3-sonnet-20240229 #claude-3-opus-20240229
-    structured_llm = model.with_structured_output(
-        StageRoleBase, include_raw=True, method="json_mode"
-    )
-    # print(structured_llm)
-    # print(userMessage)
-    return structured_llm.invoke(input=userMessage)
 
 
 def filter_files(file_list):
@@ -311,7 +68,10 @@ def loadLoopFile(file):
         tokenCount = len(html) // 4
         return html, tokenCount
     except Exception as e:
-        print(f"Failed to load file {file}: {str(e)}")
+        print(f"Failed to intially load file {file}: {str(e)}")
+
+
+# scraped_data/google/about_careers_applications_jobs_results_data_engineer_machine_learning_125881358477075142_visible_text.txt
 
 
 def process_file(file):
@@ -346,13 +106,14 @@ def process_file(file):
         print(
             f"\n\n-----\n\nModel:{model}\nParsing: {file} \n Tokens: {tokenCount} \n Try:{tries}\n\n-----\n"
         )
+        # TODO: VECTORIZE THE HTML FILE*
         try:
 
             # this should be populated within the call to AIFunctionRun
             a = {
                 "input_model": model,
                 "tokenCount": tokenCount,
-                "function": "parseStageRoleHtml",
+                "function": "parseStg_RoleHtml",
                 "tries": tries,
                 "file_source": file,
                 "url": None,
@@ -367,11 +128,11 @@ def process_file(file):
 
             fkid = dump.pop("id", None)
             if model == "4":
-                x = parseHTMLgpt4(html)
+                x = htmlParsers.parseHTMLgpt4(html)
             elif model == "3.5":
-                x = parseHTMLgpt3(html)
+                x = htmlParsers.parseHTMLgpt3(html)
             elif model == "claude":
-                x = parseHTMLClaud3(html)
+                x = htmlParsers.parseHTMLClaud3(html)
             else:
                 raise ValueError("Model not supported")
 
@@ -388,11 +149,10 @@ def process_file(file):
                 raise ValueError("No parsed response from model")
 
             payload = x["parsed"]
-            role = StageRole(
+            role = Stg_Role(
                 **payload,
                 AIFunctionRun_id=fkid,
                 file_source=file,
-                status="active",
             )
             z = x["raw"]
             # print(f"n\n\ncontent {z.content}\n\n\n")
@@ -468,7 +228,7 @@ if __name__ == "__main__":
     file = "scraped_data/plaid/careers_openings_engineering_san_francisco_data_engineer_data_engineering.txt"
     file = "scraped_data/plaid/careers_openings_engineering_san_francisco_data_engineer_data_engineering.txt"
     directory = "scraped_data/"
-
+    file = "scraped_data/google/text_detail/about_careers_applications_jobs_results_data_engineer_machine_learning_125881358477075142_visible_text.txt"
     import concurrent.futures
 
     import traceback
@@ -476,7 +236,7 @@ if __name__ == "__main__":
     import time
 
     init_db()
-    ##process_file(file)
+    # process_file(file)
 
     # with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
     #     executor.map(process_file, get_all_html_files(directory, "txt"))

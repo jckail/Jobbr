@@ -1,4 +1,5 @@
 from sqlmodel import create_engine, SQLModel, Session
+from sqlalchemy.exc import SQLAlchemyError
 
 
 # DATABASE_URL = "postgresql+psycopg2://postgres:postgres@localhost:5432/exampledb"
@@ -14,3 +15,27 @@ def init_db():
 def get_session():
     with Session(engine) as session:
         yield session
+
+
+def saveDataModel(data_model, session=None, engine=None):
+    try:
+        if not engine:
+            engine = create_engine(DATABASE_URL)
+
+        if not session:
+            with Session(engine) as session:
+                session.add(data_model)
+                session.commit()
+                return data_model, session, engine
+
+        session.add(data_model)
+        session.commit()
+        return data_model, session, engine
+    except SQLAlchemyError as e:
+        print(f"An error occurred with the database operation: saveDataModel - {e}")
+        # Optionally, re-raise the exception if you want it to propagate
+        raise
+    except Exception as e:
+        print(f"An unexpected error occurred: saveDataModel - {e}")
+        # Optionally, re-raise the exception if you want it to propagate
+        raise

@@ -228,9 +228,7 @@ def createURL(url: URLBase) -> URL:
 
         html_file = base_path + fileName + ".html"
         text_file = base_path + fileName + ".txt"
-        visible_text_file = (
-            base_path + "text_detail/" + fileName + "_visible_text" + ".txt"
-        )
+        visible_text_file = base_path + fileName + "_visible_text" + ".txt"
         meta_contents_file = (
             base_path + "text_detail/" + fileName + "_meta_contents" + ".txt"
         )
@@ -278,6 +276,7 @@ def createURL(url: URLBase) -> URL:
             snapshotPath=png_file,
             htmlPath=html_file,
             parseTextPath=text_file,
+            parseVisibleTextPath=visible_text_file,
         )
     except Exception as e:
         print(f"An error occurred: {e}")

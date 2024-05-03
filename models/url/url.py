@@ -12,6 +12,7 @@ class URL(URLBase, table=True):
     snapshotPath: FilePath | None = Field(sa_type=AutoString)
     htmlPath: FilePath | None = Field(sa_type=AutoString)
     parseTextPath: FilePath | None = Field(sa_type=AutoString)
+    parseVisibleTextPath: FilePath | None = Field(sa_type=AutoString)
 
 
 # if __name__ == "__main__":
