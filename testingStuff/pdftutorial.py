@@ -14,6 +14,7 @@ faiss_index = FAISS.from_documents(pages, OpenAIEmbeddings())
 docs = faiss_index.similarity_search("where is jordan?", k=2)
 for doc in docs:
     print(str(doc.metadata["page"]) + ":", doc.page_content)
+    print(doc)
 
 
 # `pip install faiss-gpu` (for CUDA supported GPU)
