@@ -26,10 +26,13 @@ def saveDataModel(data_model, session=None, engine=None):
             with Session(engine) as session:
                 session.add(data_model)
                 session.commit()
+                session.refresh(data_model)
                 return data_model, session, engine
 
         session.add(data_model)
         session.commit()
+        session.refresh(data_model)
+
         return data_model, session, engine
     except SQLAlchemyError as e:
         print(f"An error occurred with the database operation: saveDataModel - {e}")

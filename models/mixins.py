@@ -1,14 +1,13 @@
 import time
-import uuid
 from datetime import datetime
-from sqlalchemy import Column, DateTime, UUID, Integer
+from sqlalchemy import Column, DateTime, Integer
 from sqlalchemy.orm import declarative_mixin
 
 
 @declarative_mixin
 class BaseMixin:
     # Primary key with UUID
-
+    # id = Column(UUID, default=uuid.uuid4, primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
         DateTime, default=datetime.utcnow, nullable=False, onupdate=datetime.utcnow

@@ -28,10 +28,11 @@ class LLM(Enum):
 
 
 class AIEventType(Enum):
-    CREATE = "create"
+    CREATE = "Create"
     CHAT = "chat"
     FUNCTION = "function"
     KILL = "kill"
+    CONTEXT = "context"
 
 
 class AIEventStatus(Enum):
@@ -41,6 +42,8 @@ class AIEventStatus(Enum):
     COMPLETED = "completed"
 
 
-class AIFunction(Enum):
-    CREATEAI = "createAI"
-    PARSEROLEHTML = "parseRoleHTML"
+class AIEvent(Enum):
+    CREATE_AI = "createAI"
+    PARSE_ROLE_HTML = "parseRoleHTML"
+    LOAD_CONTEXT = "load_context"
+    GENERATE_PROMPT = "generate_prompt"

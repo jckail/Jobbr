@@ -73,20 +73,34 @@ def get_all_html_files(directory, file_type):
     return html_files
 
 
-def load_html(file_path):
-    with open(file_path, "r") as file:
-        data = file.read()
-    return data
-
-
 def get_number_of_characters(file_path):
     with open(file_path, "r") as file:
         contents = file.read().replace("\n", "")
     return len(contents)
 
 
-def load_file(file_path):
+def load_html(file_path):
     if file_path.endswith(".html"):
-        return load_html(file_path)
-    else:
-        return None
+        with open(file_path, "r") as file:
+            data = file.read()
+        return data
+
+
+def load_txt(file_path):
+    if file_path.endswith(".txt"):
+        with open(file_path, "r") as file:
+            data = file.read()
+        return data
+
+
+def load_file(file_path):
+    try:
+        if file_path.endswith(".html"):
+            return load_html(file_path)
+        elif file_path.endswith(".txt"):
+            return load_txt(file_path)
+        else:
+            return None
+
+    except Exception as e:
+        print(f"Failed to load file {file_path}: {str(e)}")
