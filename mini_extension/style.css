@@ -1,0 +1,49 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 10px;
+    text-align: center;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+h1 {
+    color: #5a5a5a;
+}
+
+button {
+    background-color: #4CAF50;
+    /* Green */
+    border: none;
+    color: white;
+    padding: 15px 32px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+button:hover {
+    background-color: #45a049;
+    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+}
+
+#statusMessage {
+    color: #31708f;
+    /* Text color */
+    background-color: #d9edf7;
+    /* Light blue background */
+    border-color: #bce8f1;
+    /* Slightly darker blue border */
+    padding: 10px;
+    /* Padding for some space inside the message box */
+    border-radius: 4px;
+    /* Rounded corners */
+    margin-top: 10px;
+    /* Margin on top to separate it from the button */
+    display: none;
+    /* Initially hidden */
+}

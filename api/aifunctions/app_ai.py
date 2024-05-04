@@ -13,7 +13,9 @@ from models import (
     Stg_RoleBase,
     SourceType,
 )
-
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 from typing import Optional, List, Tuple
 from pydantic import BaseModel
@@ -33,7 +35,11 @@ class JobbrAI:
             self.model_engine = ChatOpenAI(model=llm.value, temperature=temperature)
 
         elif llm in [LLM.CLAUD3_OPUS]:
-            self.model_engine = ChatAnthropic(model=llm.value, temperature=temperature)
+            print('running claude')
+            
+
+            
+            self.model_engine = ChatAnthropic(model=llm.value, temperature=temperature,api_key=str(os.getenv('ANTHROPIC_API_KEY')),)
             ## don't forget custom names loading outputs to this vs open ai
         else:
             raise ValueError("Model not supported")
@@ -160,7 +166,7 @@ class JobbrAI:
                 event_type=AIEventType.CONTEXT,
                 event=AIEvent.LOAD_CONTEXT,
                 event_status=AIEventStatus.FAILED,
-                messages=[source_name, alias],
+                messages=[source_name, alias, ],
             )
             raise
 
@@ -178,36 +184,7 @@ class JobbrAI:
         prompt_template = ChatPromptTemplate.from_template(prompt_template)
         return prompt_template.format(context=context, question=query)
 
-    # def parseRoleHTML(
-    #     self,
-    #     roleHTMLFile,
-    #     alias: str = None,
-    #     description: str = None,
-    #     extra_data: dict = None,
-    # ):
-    #     f = Stg_RoleBase.__doc__
 
-    #     userMessage = f" Convert the following job posting text to exactly the desired json format {f}. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None. If there is a mention of 'not found' assume the role has been filled and the status is closed. Here is the job posting"
-
-    #     if not alias:
-    #         alias = roleHTMLFile
-
-    #     if not description:
-    #         description = "A role posting's raw html"
-
-    #     if not extra_data:
-    #         extra_data = {"url": alias}
-
-    #     ci = self.loadContextFile(
-    #         roleHTMLFile, alias=alias, description=description, extra_data=extra_data
-    #     )
-    #     self.context.specified_context_ids = [ci.id]
-    #     return self.parseToDataModel(
-    #         Stg_RoleBase,
-    #         AIEvent.PARSE_ROLE_HTML,
-    #         userMessage,
-    #         extra_data=extra_data,
-    #     )
 
     def parseToDataModel(
         self,
@@ -219,7 +196,7 @@ class JobbrAI:
 
         if not userMessage:
             userMessage = " Convert the following text to exactly the desired json format provided. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None."
-
+        prompt = ""
         prompt = self.generatePrompt(
             userMessage,
             self.parseDataPromptTemplate,
@@ -234,16 +211,26 @@ class JobbrAI:
             estimated_tokens=estimatedTokens,
             messages=[userMessage],
         )
-
+        
         try:
+            x = None
+            
             if estimatedTokens > self.max_tokens:
                 # throw exception
                 raise ValueError(
                     f"Too many tokens in one query, max set to {self.max_tokens}"
                 )
-            structured_llm = self.model_engine.with_structured_output(
+            if self.model in [LLM.GPT3, LLM.GPT4]:
+                structured_llm = self.model_engine.with_structured_output(
                 targetBaseModel, include_raw=True, method="json_mode"
             )
+            elif self.model in [LLM.CLAUD3_OPUS]:
+                print("trying")
+                structured_llm = self.model_engine.with_structured_output(targetBaseModel, include_raw=True)
+
+            else:
+                # raise an error indicating the llm has not been configured
+                raise ValueError(f"Model:{self.model.value} not supported")
 
             x = structured_llm.invoke(input=prompt)
             z = x["raw"]
@@ -259,10 +246,12 @@ class JobbrAI:
             baseModel = targetBaseModel(**payload)
 
             if self.model in [LLM.GPT3, LLM.GPT4]:
+                print(f"\n---\nInput Tokens: {z.response_metadata["token_usage"]["prompt_tokens"]} \n---\n")
                 airR = App_AI_Event(
                     app_ai_id=self.id,
                     model=self.model,
                     temperature=self.temperature,
+                    estimated_tokens = estimatedTokens, 
                     event_type=self.lastEvent.event_type,
                     event=self.lastEvent.event,
                     event_status=AIEventStatus.COMPLETED,
@@ -275,14 +264,17 @@ class JobbrAI:
                         "completion_tokens"
                     ],
                     parsing_error=parsing_error,
+                    messages=[str(payload)],
                 )
                 airR.saveModel()
 
             elif self.model in [LLM.CLAUD3_OPUS]:
+                #print(f"\n---\nInput Tokens: {z.response_metadata["token_usage"]["prompt_tokens"]} \n---\n")
                 airR = App_AI_Event(
                     app_ai_id=self.id,
                     model=self.model,
                     temperature=self.temperature,
+                    estimated_tokens = estimatedTokens, 
                     event_type=self.lastEvent.event_type,
                     event=self.lastEvent.event,
                     event_status=AIEventStatus.COMPLETED,
@@ -295,10 +287,13 @@ class JobbrAI:
                         "output_tokens"
                     ],  # openai  completion_tokens #claude output_tokens
                     parsing_error=parsing_error,
+                    messages=[str(payload)],
                 )
                 airR.saveModel()
 
+            self.lastEvent = airR
             return baseModel, {
+                "app_ai_id" :self.lastEvent.app_ai_id,
                 "app_ai_event_id": self.lastEvent.id,
                 "specified_context_ids": [
                     str(x) for x in self.context.specified_context_ids
@@ -314,7 +309,8 @@ class JobbrAI:
                 event_type=AIEventType.FUNCTION,
                 event=AIEvent.PARSE_ROLE_HTML,
                 event_status=AIEventStatus.FAILED,
-                messages=[str(e)],
+                estimated_tokens = estimatedTokens, 
+                messages=[str(e),str(x),prompt],
             )
             raise
 

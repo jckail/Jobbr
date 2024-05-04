@@ -62,8 +62,9 @@ def random_sleep():
     print(f"Slept for {sleep_time} seconds")
 
 
-def loadLoopFile(file):
+def loadLoopFile(file: str):
     try:
+        print(file)
         html = load_html(file)
         tokenCount = len(html) // 4
         return html, tokenCount
@@ -80,7 +81,7 @@ def process_file(file):
     tries = 0
     dump = None
     model = "3.5"
-
+    print(file)
     while tries < max_tries:
         tries += 1
         html, tokenCount = loadLoopFile(file)
@@ -125,7 +126,8 @@ def process_file(file):
             with Session(engine) as session:
                 session.add(air)
                 session.commit()
-
+                
+            model = "claude"
             fkid = dump.pop("id", None)
             if model == "4":
                 x = htmlParsers.parseHTMLgpt4(html)
@@ -137,13 +139,13 @@ def process_file(file):
                 raise ValueError("Model not supported")
 
             #
-            # print("\n----\n\n----\n")
-            # print("\n--x[raw]--\n", x, "\n----")
-            # z = x["raw"]
-            # # print("\n----\n", z.response_metadata, "\n----")
-            # # print("\n----\n", z, "\n----")
-            # print(f"\n--Parsed--\n {z.content[0]} \n----\n")
-            # print(f"\n--Parsed--\n {x["parsed"]} \n----\n")
+            print("\n----\n\n----\n")
+            print("\n--x[raw]--\n", x, "\n----")
+            z = x["raw"]
+            # print("\n----\n", z.response_metadata, "\n----")
+            # print("\n----\n", z, "\n----")
+            print(f"\n--Parsed--\n {z.content[0]} \n----\n")
+            print(f"\n--Parsed--\n {x["parsed"]} \n----\n")
 
             if not x["parsed"]:
                 raise ValueError("No parsed response from model")
@@ -156,6 +158,7 @@ def process_file(file):
             )
             z = x["raw"]
             # print(f"n\n\ncontent {z.content}\n\n\n")
+            
             if model in ["3.5", "4"]:
 
                 airR = AIFunctionResult(
@@ -228,7 +231,8 @@ if __name__ == "__main__":
     file = "scraped_data/plaid/careers_openings_engineering_san_francisco_data_engineer_data_engineering.txt"
     file = "scraped_data/plaid/careers_openings_engineering_san_francisco_data_engineer_data_engineering.txt"
     directory = "scraped_data/"
-    file = "scraped_data/google/text_detail/about_careers_applications_jobs_results_data_engineer_machine_learning_125881358477075142_visible_text.txt"
+    file = "/Users/jordankail/Jobbr/scraped_data/snagajob/jobs_searchResponseId_2afb5ec0_4a6d_aa1e_262034b76995_searchRequestId_e5e2248d_2dd5_44d2_819d_78b0cdd2ad07_promo_532620979.html"
+
     import concurrent.futures
 
     import traceback
@@ -236,27 +240,27 @@ if __name__ == "__main__":
     import time
 
     init_db()
-    # process_file(file)
+    process_file(file)
 
     # with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
     #     executor.map(process_file, get_all_html_files(directory, "txt"))
     # Define a function to process a file and return the result if any
 
-    def process_and_yield(file):
-        result = process_file(file)
-        if result:
-            return result
-        print("thread_sleeping")
-        random_sleep()
+    # def process_and_yield(file):
+    #     result = process_file(file)
+    #     if result:
+    #         return result
+    #     print("thread_sleeping")
+    #     random_sleep()
 
-    # Get all HTML files in the directory
-    files = get_all_html_files(directory, "txt")
+    # # Get all HTML files in the directory
+    # files = get_all_html_files(directory, "txt")
 
-    # Submit tasks to the executor and process the results as they complete
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = [executor.submit(process_and_yield, file) for file in files]
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result:
-                print(result)
-                # Do something with the result
+    # # Submit tasks to the executor and process the results as they complete
+    # with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+    #     futures = [executor.submit(process_and_yield, file) for file in files]
+    #     for future in concurrent.futures.as_completed(futures):
+    #         result = future.result()
+    #         if result:
+    #             print(result)
+    #             # Do something with the result
