@@ -8,7 +8,6 @@ from sqlmodel import (
     Column,
     String,
 )
-from uuid import UUID
 
 
 # TODO: FIX INPUT TOKENS
@@ -16,111 +15,255 @@ from uuid import UUID
 ## TODO test against langchain outputs etc its going to be better than this i think
 class Stg_RoleBase(BaseMixin, SQLModel):
     """
-    Pydantic Basemodel
 
-    This data represents a job posting from a job board.
+    A Pydantic model representing a job posting, capturing essential details
+    about the job role, team, and employment conditions.
+
+    Attributes:
+        company_name (str): The official name of the company offering the job.
+        title (str): Specific title of the job role, not including the team name.
+        job_category (Optional[str]): Standard industry designation of the role, e.g., 'software engineer'.
+        posting_date (Optional[str]): Date when the job was initially posted.
+        employment_type (Optional[str]): Type of employment (e.g., full-time, part-time, internship).
+        employment_term_days (Optional[int]): Duration of the job term in days, where 30 days corresponds to one month.
+        description (Optional[str]): Brief overview of the role, limited to 120 characters.
+        team (Optional[str]): The specific team or department within the company.
+        team_description (Optional[str]): Description of the team's functions and values, limited to 120 characters.
+        expectations (Optional[str]): Daily expectations from the role, described in under 120 characters.
+        location (Optional[List[str]]): Possible locations for the role, formatted as 'City, State'.
+        remote (Optional[bool]): Whether the role permits remote work.
+        in_person (Optional[bool]): Whether the role requires physical presence at the office.
+        travel (Optional[str]): Expected frequency and extent of travel for the role.
+        responsibilities (Optional[List[str]]): Detailed list of job responsibilities.
+        qualifications (Optional[List[str]]): Required qualifications for the role.
+        soft_skills (Optional[List[str]]): Non-technical skills important for the role.
+        tool_experience (Optional[List[str]]): Non-programming tools and technologies used in the role.
+        programming_languages (Optional[List[str]]): Programming languages relevant to the role.
+        technical_skills (Optional[List[str]]): Technical skills specifically required for the role.
+        certifications (Optional[List[str]]): Preferred professional certifications.
+        years_of_experience (Optional[int]): Required years of professional experience.
+        prior_experience_description (Optional[str]): Description of any specific previous experience desired.
+        individual_contributor (Optional[bool]): If the role is for an individual contributor.
+        people_manager (Optional[bool]): If the role involves managing a team.
+        estimated_career_level (Optional[str]): Expected career level for the role (e.g., junior, senior).
+        education_requirement (Optional[str]): Educational prerequisites for the role.
+        compensation_type (Optional[str]): Basis of compensation (e.g., salaried, hourly).
+        estimated_min_compensation (Optional[int]): Minimum estimated compensation for the role.
+        estimated_max_compensation (Optional[int]): Maximum estimated compensation for the role.
+        compensation_description (Optional[str]): Additional details about compensation, under 120 characters.
+        unlimited_pto (Optional[bool]): If unlimited paid time off is offered.
+        pto_and_benefits (Optional[str]): Overview of benefits and PTO, limited to 120 characters.
+        role_quirks (Optional[str]): Unique or unusual aspects of the role.
+        ai_analysis (Optional[str]): A summary of who might do well or like the role limited to 120 characters..
+        estimated_status (Optional[str]): Assumed availability of the role based on the job posting.
+        external_links (Optional[List[str]]): Relevant URLs or hyperlinks associated with the job posting.
+        industry (Optional[str]): Sector the company operates in, e.g., 'technology', 'healthcare'.
+        job_identifier (Optional[str]): Unique identifier for the job posting, often difficult to locate. -- this hould be a string
+        offers_401k (Optional[bool]): Whether a 401k plan is part of the job's compensation package.
+
+    Example of a populated schema as json:
+    {
+    "company_name": "Red Lobster",
+    "title": "Server",
+    "job_category": "Restaurant",
+    "posting_date": "2024-04-27",
+    "employment_type": "Full-time, Part-time",
+    "employment_term_days": null,
+    "description": "As a Server at Red Lobster, you will enhance guest experiences by offering personalized service, suggestions and pairings.",
+    "team": null,
+    "team_description": null,
+    "expectations": "Daily tasks will include taking orders accurately, delivering hot food promptly, clearing tables, and managing transactions!",
+    "location": ["Aurora, Colorado"],
+    "remote": "No",
+    "in_person": "Yes",
+    "travel": null,
+    "responsibilities": ["taking orders accurately", "delivering hot food promptly", "clearing tables", "managing transactions"],
+    "qualifications": ["Must be of legal age to serve alcohol based on state requirements"],
+    "soft_skills": ["Multi-tasking", "listening", "communication skills"],
+    "tool_experience": ["Point of Sale systems"], // This is an inferred field since servers generally use this, not explicitly mentioned.
+    "programming_languages": null,
+    "technical_skills": null,
+    "certifications": null,
+    "years_of_experience": null,
+    "prior_experience_description": null,
+    "individual_contributor": true,
+    "people_manager": false,
+    "estimated_career_level": "Entry",
+    "education_requirement": null,
+    "compensation_type": "Hourly",
+    "estimated_min_compensation": 11,
+    "estimated_max_compensation": 25,
+    "compensation_description": "$11.40 - $25.00 per hour",
+    "unlimited_pto": null,
+    "pto_and_benefits": null,
+    "role_quirks": null,
+    "ai_analysis": null,
+    "estimated_status": "Active",
+    "external_links": [],
+    "industry": "Restaurant",
+    "job_identifier": "asdfasdf23423",
+    "offers_401k": null
+    }
 
 
-    company_name (str): The name of the company associated with the role.
-    title (str): The title of the role (excluding the team).
-    job_category(str): Industry standard term for the role ie software engineer, software engineering manager, accountant, product manager
-    posting_date(str): when the job was posted
-    employment_type(str): This field is a string. If this role is fulltime, parttime, internship, contract, contract to hire. This should be a string.
-    employment_term_days(int): Length of time in days of the employment - 1 month 30 days, 4 weeks 28 days, one year 365
-    description (str): A short description of the role. - under 120 characters
-    team (str): The name of the team or group the role is located on - this is not the company name.
-    team_description (str): A description of the team, what products they support what are the values. - under 120 characters
-    expectations(str): An overview of the expectations or what the role will be doing on a daily basis. - under 120 characters
-    location (List[str]): A list of locations avalible for the role IE: city,state San Francisco, California or Atlanta, Georgia.
-    remote (str)): If the role allows remote work in any capacity.
-    in_person (str)): If the role requires the person to go into the office or be in person.
-    travel (str): The travel frequency requirements of the role.
-    responsibilities (List[str]): A list of all responsibilities for the role;
-    qualifications (List[str]): A list of all qualifications for the role;
-    soft_skills (List[str]): The soft skills described in the role such as leadership, organization, mentorship.
-    tool_experience (List[str]):  Tools or technologies used by the team not programming languages.
-    programming_languages (List[str]): Programming languages the role could use IE SQL, PYTHON, Java, GO.
-    technical_skills (List[str]): The technical skills required for the role .
-    certifications (List[str]): Ideal certifications for the role.
-    years_of_experience (int): The estimated years of experience for the role.
-    prior_experience_description (str): Description of any desired previous experience.
-    individual_contributor(bool): If this role is an individual contributor not directly responsible for other humans in the organization.
-    people_manager (bool): If this role is a direct manager of humans in the organization - ie manager of people not a product manager.
-    estimated_career_level (str): An estimation of what level at the company this is IE is a junior, midlevel, senior, manager, director or leadership role could be another value.
-    education_requirement (str): This is the description of any eduction requirments for the role
-    compensation_type(str): Frequency of compesation indicates salaried, hourly, etc...
-    estimated_min_compensation (int): The estimated minimum compensation for the role.
-    estimated_max_compensation (int): The estimated maximum compensation for the role.
-    compensation_description (str): Details around the compensation for the role including a range. - under 120 characters
-    unlimited_pto (bool): If the company offers unlimited PTO.
-    pto_and_benefits (str): The benefits and PTO information for the role. - under 120 characters
-    role_quirks (str): Anything that stands out about the role being unique or bizzare.
-    ai_analysis (str): This field should be blank.
-    estimated_status (str): This is a best guess if the role is still avalible based on there being a job description on the page.
-    external_links (List[str]): List any URLS or hyper links found on the page
-    industry (str): The industry the company is in ie "technology", "web applicaitons", "healthcare", "financial services"
-    job_id (str): The unique identifier for the instance of the role often called job number or job id or role id. This often isn't shown and is tricky to spot.
-    offers_401k(bool): Offers a 401k package as apart of compensation
     """
 
-    company_name: str
-    title: Optional[str]
-    job_category: Optional[str]
-    posting_date: Optional[str]
-    employment_type: Optional[str]
-    employment_term_days: Optional[int]
-    description: Optional[str]
-    team: Optional[str]
-    team_description: Optional[str]
-    expectations: Optional[str]
-    location: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+    company_name: str = Field(
+        description="The official name of the company offering the job."
     )
-    remote: Optional[str]
-    in_person: Optional[str]
-    travel: Optional[str]
+    title: Optional[str] = Field(
+        default=None,
+        description="Specific title of the job role, not including the team name.",
+    )
+    job_category: Optional[str] = Field(
+        default=None,
+        description="Standard industry designation of the role, e.g., 'software engineer'.",
+    )
+    posting_date: Optional[str] = Field(
+        default=None, description="Date when the job was initially posted."
+    )
+    employment_type: Optional[str] = Field(
+        default=None,
+        description="Type of employment (e.g., full-time, part-time, internship).",
+    )
+    employment_term_days: Optional[int] = Field(
+        default=None,
+        description="Duration of the job term in days, where 30 days corresponds to one month.",
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Brief overview of the role, limited to 120 characters.",
+    )
+    team: Optional[str] = Field(
+        default=None, description="The specific team or department within the company."
+    )
+    team_description: Optional[str] = Field(
+        default=None,
+        description="Description of the team's functions and values, limited to 120 characters.",
+    )
+    expectations: Optional[str] = Field(
+        default=None,
+        description="Daily expectations from the role, described in under 120 characters.",
+    )
+    location: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Possible locations for the role, formatted as 'City, State'.",
+    )
+    remote: Optional[bool] = Field(
+        default=None, description="Whether the role permits remote work."
+    )
+    in_person: Optional[bool] = Field(
+        default=None,
+        description="Whether the role requires physical presence at the office.",
+    )
+    travel: Optional[str] = Field(
+        default=None,
+        description="Expected frequency and extent of travel for the role.",
+    )
     responsibilities: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Detailed list of job responsibilities.",
     )
     qualifications: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Required qualifications for the role.",
     )
     soft_skills: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Non-technical skills important for the role.",
     )
     tool_experience: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Non-programming tools and technologies used in the role.",
     )
     programming_languages: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Programming languages relevant to the role.",
     )
     technical_skills: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Technical skills specifically required for the role.",
     )
     certifications: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Preferred professional certifications.",
     )
-    years_of_experience: Optional[int]
-    prior_experience_description: Optional[str]
-    individual_contributor: Optional[bool]
-    people_manager: Optional[bool]
-    estimated_career_level: Optional[str]
-    education_requirement: Optional[str]
-    compensation_type: Optional[str]
-    estimated_min_compensation: Optional[int]
-    estimated_max_compensation: Optional[int]
-    compensation_description: Optional[str]
-    unlimited_pto: Optional[bool]
-    pto_and_benefits: Optional[str]  ##TODO Make this a list
-    role_quirks: Optional[str]
-    ai_analysis: Optional[str] = None
-    estimated_status: Optional[str]
+    years_of_experience: Optional[int] = Field(
+        default=None, description="Required years of professional experience."
+    )
+    prior_experience_description: Optional[str] = Field(
+        default=None,
+        description="Description of any specific previous experience desired.",
+    )
+    individual_contributor: Optional[bool] = Field(
+        default=None, description="If the role is for an individual contributor."
+    )
+    people_manager: Optional[bool] = Field(
+        default=None, description="If the role involves managing a team."
+    )
+    estimated_career_level: Optional[str] = Field(
+        default=None,
+        description="Expected career level for the role (e.g., junior, senior).",
+    )
+    education_requirement: Optional[str] = Field(
+        default=None, description="Educational prerequisites for the role."
+    )
+    compensation_type: Optional[str] = Field(
+        default=None, description="Basis of compensation (e.g., salaried, hourly)."
+    )
+    estimated_min_compensation: Optional[int] = Field(
+        default=None, description="Minimum estimated compensation for the role."
+    )
+    estimated_max_compensation: Optional[int] = Field(
+        default=None, description="Maximum estimated compensation for the role."
+    )
+    compensation_description: Optional[str] = Field(
+        default=None,
+        description="Additional details about compensation, under 120 characters.",
+    )
+    unlimited_pto: Optional[bool] = Field(
+        default=None, description="If unlimited paid time off is offered."
+    )
+    pto_and_benefits: Optional[str] = Field(
+        default=None,
+        description="Overview of benefits and PTO, limited to 120 characters.",
+    )
+    role_quirks: Optional[str] = Field(
+        default=None, description="Unique or unusual aspects of the role."
+    )
+    ai_analysis: Optional[str] = Field(
+        default=None,
+        description="A summary of who might do well or like the role limited to 120 characters.",
+    )
+    estimated_status: Optional[str] = Field(
+        default=None,
+        description="Assumed availability of the role based on the job posting.",
+    )
     external_links: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
+        default=None,
+        sa_column=Column(postgresql.ARRAY(String())),
+        description="Relevant URLs or hyperlinks associated with the job posting.",
     )
-    industry: Optional[str]
-    job_id: Optional[str]
-    offers_401k: Optional[bool]
+    industry: Optional[str] = Field(
+        default=None,
+        description="Sector the company operates in, e.g., 'technology', 'healthcare'.",
+    )
+    job_identifier: Optional[str] = Field(
+        default=None,
+        description="Unique identifier for the job posting, often difficult to locate.",
+    )
+    offers_401k: Optional[bool] = Field(
+        default=None,
+        description="Whether a 401k plan is part of the job's compensation package.",
+    )
 
     class Config:
         """

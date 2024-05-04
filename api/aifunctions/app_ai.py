@@ -28,17 +28,13 @@ from .ai_context import AI_CONTEXT
 
 class JobbrAI:
     def __init__(self, llm: LLM = LLM.GPT3, temperature=0, max_tokens=None):
-
+        self.estimated_tokens = None
         self.id = uuid4()
         self.model_creation_utc = int(datetime.now().timestamp())
         if llm in [LLM.GPT3, LLM.GPT4]:
             self.model_engine = ChatOpenAI(model=llm.value, temperature=temperature)
 
         elif llm in [LLM.CLAUD3_OPUS]:
-            print('running claude')
-            
-
-            
             self.model_engine = ChatAnthropic(model=llm.value, temperature=temperature,api_key=str(os.getenv('ANTHROPIC_API_KEY')),)
             ## don't forget custom names loading outputs to this vs open ai
         else:
@@ -61,24 +57,9 @@ class JobbrAI:
         self.lastEvent = None
         self.context = AI_CONTEXT(self.id)
         self.save_app_ai()
-
-        self.parseDataPromptTemplate = """
-
-            -----------------
-            -----------------
-
-            question: 
-            "{question}" 
+        
 
 
-            Answer the qustion provided only the documents and context I give you:
-
-            Contexts:
-            {context} 
-
-
-
-            """
         self.currentPrompt = ""
 
     ### add in prompt functionality
@@ -156,6 +137,7 @@ class JobbrAI:
                 event_type=AIEventType.CONTEXT,
                 event=AIEvent.LOAD_CONTEXT,
                 event_status=AIEventStatus.COMPLETED,
+                estimated_tokens = ci.estimated_tokens,
                 messages=[source_name, alias, str(ci.id)],
             )
             return ci
@@ -170,19 +152,68 @@ class JobbrAI:
             )
             raise
 
-    def generatePrompt(self, query, prompt_template: str):
+    def generateContext(self):
+        """
+        TODO:  THis should become a method to turn specific context to one context
+        """
+        try:
+            contextList = []
+            for id in self.context.context_items:
+                if id in self.context.specified_context_ids:
+                    contextItem = self.context.context_items[id]
+                    contextList.append(
+                        f"{contextItem.alias} generated from {contextItem.source_name}: {contextItem.data}"
+                    )
 
-        contextList = []
-        for id in self.context.context_items:
-            if id in self.context.specified_context_ids:
-                contextList.append(
-                    f"{self.context.context_items[id]} generated from {self.context.context_items[id].source_name}: {self.context.context_items[id].data}"
-                )
+            return "\n----\n".join(contextList)
 
-        context = "\n---\n ".join(contextList)
 
-        prompt_template = ChatPromptTemplate.from_template(prompt_template)
-        return prompt_template.format(context=context, question=query)
+        except Exception as e:
+            print(f"Aggregating context lists: {e}")
+            raise
+
+
+    def setEstimatedTokens(self, characterCount):
+        self.estimated_tokens = len(characterCount) // 4
+
+        if self.estimated_tokens > self.max_tokens:
+            # throw exception
+            raise ValueError(
+                f"Too many tokens in one query, max set to {self.max_tokens}"
+            )
+        return self.estimated_tokens
+
+    def generateParseDataPrompt(self, userMessage, modelDocString):
+        try:
+            parseDataPromptTemplate = """
+
+Data to Parse to JSON: You will receive the specific data that needs to be converted to a specified JSON format. Use this data in accordance with the above instructions to generate the output.
+
+Data Schema: Refer to the provided schema which includes data types and descriptions for each field. Ensure that the JSON output matches the schema exactly in terms of field names and data types.
+Handling Missing Data: If any data required by the schema is missing, assign the value null to the corresponding field in the JSON output.
+Handling Uncertainties: If you are unsure about what data corresponds to a field, use your best judgement to make an educated guess. If completely unsure, you may also use null as a placeholder.
+Field Completeness: Aim to populate as many fields as possible in the JSON output. The priority is to ensure that field names and data types are correct. Maximizing the number of populated fields is secondary but also important.
+Example Output: An example of the desired JSON format will be provided. Use this as a guide to understand how the final output should look.
+Final Output: Ensure the JSON output is well-formed, with correct syntax and structure. Use standard JSON formatting practices.
+
+                {userMessage} 
+
+                Data Schema:
+                {modelDocString} 
+
+                Data to Parse to JSON:
+                {context}
+
+                """
+            
+            prompt_template = ChatPromptTemplate.from_template(parseDataPromptTemplate)
+            prompt = prompt_template.format(context=self.generateContext(), userMessage=userMessage, modelDocString=modelDocString)
+
+            self.setEstimatedTokens(prompt)
+            return prompt
+        except Exception as e:
+            # Handle general errors
+            print(f"An error occurred: {str(e)}")
 
 
 
@@ -193,39 +224,25 @@ class JobbrAI:
         userMessage: str = None,
         extra_data: dict = None,
     ) -> Tuple[BaseModel, dict]:
+        
 
-        if not userMessage:
-            userMessage = " Convert the following text to exactly the desired json format provided. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None."
-        prompt = ""
-        prompt = self.generatePrompt(
-            userMessage,
-            self.parseDataPromptTemplate,
-        )
-
-        estimatedTokens = len(prompt) // 4
+        prompt = self.generateParseDataPrompt(userMessage,targetBaseModel.__doc__ )
 
         self.save_app_ai_events(
             event_type=AIEventType.FUNCTION,
             event=aiEvent,
             event_status=AIEventStatus.STARTED,
-            estimated_tokens=estimatedTokens,
+            estimated_tokens=self.estimated_tokens,
             messages=[userMessage],
         )
         
         try:
             x = None
-            
-            if estimatedTokens > self.max_tokens:
-                # throw exception
-                raise ValueError(
-                    f"Too many tokens in one query, max set to {self.max_tokens}"
-                )
             if self.model in [LLM.GPT3, LLM.GPT4]:
                 structured_llm = self.model_engine.with_structured_output(
                 targetBaseModel, include_raw=True, method="json_mode"
             )
             elif self.model in [LLM.CLAUD3_OPUS]:
-                print("trying")
                 structured_llm = self.model_engine.with_structured_output(targetBaseModel, include_raw=True)
 
             else:
@@ -251,7 +268,7 @@ class JobbrAI:
                     app_ai_id=self.id,
                     model=self.model,
                     temperature=self.temperature,
-                    estimated_tokens = estimatedTokens, 
+                    estimated_tokens = self.estimated_tokens, 
                     event_type=self.lastEvent.event_type,
                     event=self.lastEvent.event,
                     event_status=AIEventStatus.COMPLETED,
@@ -274,7 +291,7 @@ class JobbrAI:
                     app_ai_id=self.id,
                     model=self.model,
                     temperature=self.temperature,
-                    estimated_tokens = estimatedTokens, 
+                    estimated_tokens = self.estimated_tokens, 
                     event_type=self.lastEvent.event_type,
                     event=self.lastEvent.event,
                     event_status=AIEventStatus.COMPLETED,
@@ -309,7 +326,7 @@ class JobbrAI:
                 event_type=AIEventType.FUNCTION,
                 event=AIEvent.PARSE_ROLE_HTML,
                 event_status=AIEventStatus.FAILED,
-                estimated_tokens = estimatedTokens, 
+                estimated_tokens = self.estimated_tokens, 
                 messages=[str(e),str(x),prompt],
             )
             raise

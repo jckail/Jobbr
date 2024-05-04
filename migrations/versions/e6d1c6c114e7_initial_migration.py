@@ -1,8 +1,8 @@
 """initial migration
 
-Revision ID: 410cdfff978a
+Revision ID: e6d1c6c114e7
 Revises: 
-Create Date: 2024-05-03 22:00:51.195711
+Create Date: 2024-05-04 14:17:08.318331
 
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ import sqlmodel
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '410cdfff978a'
+revision: str = 'e6d1c6c114e7'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,26 +26,46 @@ def upgrade() -> None:
     op.create_table('stg_role',
     sa.Column('company_name', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
     sa.Column('title', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('job_category', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('posting_date', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('employment_type', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('employment_term_days', sa.Integer(), nullable=True),
     sa.Column('description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('team', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('team_description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('expectations', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('location', postgresql.ARRAY(sa.String()), nullable=True),
-    sa.Column('remote', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
-    sa.Column('in_person', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('remote', sa.Boolean(), nullable=True),
+    sa.Column('in_person', sa.Boolean(), nullable=True),
     sa.Column('travel', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('responsibilities', postgresql.ARRAY(sa.String()), nullable=True),
+    sa.Column('qualifications', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('soft_skills', postgresql.ARRAY(sa.String()), nullable=True),
+    sa.Column('tool_experience', postgresql.ARRAY(sa.String()), nullable=True),
+    sa.Column('programming_languages', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('technical_skills', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('certifications', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('years_of_experience', sa.Integer(), nullable=True),
     sa.Column('prior_experience_description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('individual_contributor', sa.Boolean(), nullable=True),
+    sa.Column('people_manager', sa.Boolean(), nullable=True),
     sa.Column('estimated_career_level', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('education_requirement', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('compensation_type', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('estimated_min_compensation', sa.Integer(), nullable=True),
     sa.Column('estimated_max_compensation', sa.Integer(), nullable=True),
     sa.Column('compensation_description', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('unlimited_pto', sa.Boolean(), nullable=True),
     sa.Column('pto_and_benefits', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('role_quirks', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('ai_analysis', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     sa.Column('estimated_status', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('external_links', postgresql.ARRAY(sa.String()), nullable=True),
+    sa.Column('industry', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('job_id', sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+    sa.Column('offers_401k', sa.Boolean(), nullable=True),
     sa.Column('id', sqlmodel.sql.sqltypes.GUID(), nullable=False),
+    sa.Column('app_ai_id', sqlmodel.sql.sqltypes.GUID(), nullable=True),
     sa.Column('app_ai_event_id', sqlmodel.sql.sqltypes.GUID(), nullable=True),
     sa.Column('specified_context_ids', postgresql.ARRAY(sa.String()), nullable=True),
     sa.Column('context_id', sqlmodel.sql.sqltypes.GUID(), nullable=True),
