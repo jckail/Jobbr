@@ -1,16 +1,13 @@
-from sqlmodel import Field
 from uuid import UUID, uuid4
 from db import saveDataModel
 from sqlmodel import SQLModel, Field, Column, String
 from models.mixins import BaseMixin
 
-from uuid import UUID
 from typing import Optional, List
 from datetime import datetime
 
 from sqlalchemy.dialects import postgresql
 from ..enums import LLM, AIEventType, AIEventStatus, AIEvent
-from enum import Enum
 
 
 class App_AI_Event(BaseMixin, SQLModel, table=True):

@@ -8,6 +8,7 @@ from sqlmodel import (
     Column,
     String,
 )
+from uuid import UUID
 
 
 ##TODO create timer functions so that we can better see timing
@@ -19,7 +20,7 @@ class Stg_RoleBase(BaseMixin, SQLModel):
     company_name (str): The name of the company associated with the role.
     title (str): The title of the role.
     description (str)): A short under 75 word description and responsibilities and expectations of the role and not of the company.
-    location (str): A list of locations avalible for the role IE: city,state San Francisco, California or Atlanta, Georgia.
+    location (List[str]): A list of locations avalible for the role IE: city,state San Francisco, California or Atlanta, Georgia.
     remote (str)): If the role allows remote work in any capacity.
     in_person (str)): If the role requires the person to go into the office or be in person.
     travel (str): The travel frequency requirements of the role.
@@ -29,6 +30,7 @@ class Stg_RoleBase(BaseMixin, SQLModel):
     years_of_experience (int): The estimated years of experience for the role.
     prior_experience_description (str): Description of any desired previous experience.
     estimated_career_level (str): An estimation of what level at the company this is IE is a junior, midlevel, senior, manager, director or leadership role could be another value.
+    education_requirement (str): This is the description of any eduction requirments for the role
     estimated_min_compensation (int): The estimated minimum compensation for the role.
     estimated_max_compensation (int): The estimated maximum compensation for the role.
     compensation_description (str): Details around the compensation for the role including a range.
@@ -43,7 +45,9 @@ class Stg_RoleBase(BaseMixin, SQLModel):
     company_name: str
     title: Optional[str]
     description: Optional[str]
-    location: Optional[str]
+    location: Optional[List[str]] = Field(
+        default=None, sa_column=Column(postgresql.ARRAY(String()))
+    )
     remote: Optional[str]
     in_person: Optional[str]
     travel: Optional[str]

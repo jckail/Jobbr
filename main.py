@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from api import band, album, special, user
 from api.scraper import url
+from api.aifunctions import parseRole
 
 
 # TODO: probably want to have a user for "alembic" in the database
@@ -24,7 +25,7 @@ app = FastAPI(
     license_info={"name": "MIT"},
 )
 
-
+app.include_router(parseRole.router)
 app.include_router(band.router)
 app.include_router(album.router)
 app.include_router(user.router)

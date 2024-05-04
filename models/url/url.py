@@ -10,9 +10,13 @@ class URL(URLBase, table=True):
     type: URLType
     directory: DirectoryPath | None = Field(sa_type=AutoString)
     snapshotPath: FilePath | None = Field(sa_type=AutoString)
+    snapshot_len: int | None
     htmlPath: FilePath | None = Field(sa_type=AutoString)
+    html_len: int | None
     parseTextPath: FilePath | None = Field(sa_type=AutoString)
+    parseText_len: int | None
     parseVisibleTextPath: FilePath | None = Field(sa_type=AutoString)
+    parseVisible_len: int | None
 
 
 # if __name__ == "__main__":

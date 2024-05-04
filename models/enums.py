@@ -47,3 +47,8 @@ class AIEvent(Enum):
     PARSE_ROLE_HTML = "parseRoleHTML"
     LOAD_CONTEXT = "load_context"
     GENERATE_PROMPT = "generate_prompt"
+
+
+class SourceType(Enum):
+    FILE = "file"
+    OBJECT = "object"

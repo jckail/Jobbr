@@ -10,99 +10,18 @@ from models import (
     AIEvent,
     App_AI,
     App_AI_Event,
-    Stg_Role,
     Stg_RoleBase,
+    SourceType,
 )
 
 
-from typing import Optional, List, Any
+from typing import Optional, List, Tuple
 from pydantic import BaseModel
-from helpers import load_file
-from enum import Enum
 from langchain.prompts import ChatPromptTemplate
-
-
-class SourceType(Enum):
-    FILE = "file"
-    OBJECT = "object"
+from .ai_context import AI_CONTEXT
 
 
 ## will create a context ownership model
-
-
-### context items are not bound to a particualr ai
-class AI_CONTEXT_ITEM:
-    def __init__(
-        self,
-        source_name: str,
-        type: SourceType,
-        alias: str = None,
-        data: Any = None,
-        estimated_tokens: int = None,
-        context_owner_id: UUID = None,  # owner of the context
-        authorized_users: List[
-            UUID
-        ] = None,  # a list of users allowed to access the context
-    ):
-        self.context_owner_id = context_owner_id
-        self.authorized_users = authorized_users
-        self.id = uuid4()
-        self.source_name = (
-            source_name  # can be the name of an object alias OR name of a file
-        )
-        if alias:
-            self.alias = alias
-        else:
-            self.alias = self.source_name
-        self.type = type
-        if data:
-            self.data = data
-        else:
-            if self.type == SourceType.FILE:
-                self.data = load_file(
-                    source_name
-                )  # modify in helpersfor other file types
-
-        if estimated_tokens:
-            self.estimated_tokens = estimated_tokens
-        else:
-            self.estimated_tokens = len(self.data)  # this might break outside of HTML
-
-        #### EVENTUALLY MAP THIS TO A VECTOR QUERY //UUID
-        #### EVENTUALLY MAP THIS TO A SQL UUID
-
-
-### AI contains context items context items are not bound to a particualr ai
-class AI_CONTEXT:
-    def __init__(
-        self,
-        app_ai_id: UUID,
-        specified_context: Optional[List] = [],
-        context_items: Optional[List[AI_CONTEXT_ITEM]] = None,
-    ):
-
-        self.specified_context = specified_context
-        self.app_ai_id = app_ai_id
-        self.id = uuid4()
-        self.context_items = {}
-        if context_items:
-            for ci in context_items:
-                self.context_items[ci.id] = ci
-
-    def addExistingAI_CONTEXT_ITEM(self, ci: AI_CONTEXT_ITEM):
-        self.context_items[ci.id] = ci
-
-    def addAI_CONTEXT_ITEM(
-        self,
-        source_name: str,
-        type: SourceType,
-        alias: str = None,
-        data: Any = None,
-        estimated_tokens: int = None,
-    ):
-        ci = AI_CONTEXT_ITEM(source_name, type, alias, data, estimated_tokens)
-        self.context_items[ci.id] = ci
-        return ci
 
 
 class JobbrAI:
@@ -156,9 +75,6 @@ class JobbrAI:
             """
         self.currentPrompt = ""
 
-    def tokenEstimator(data):
-        return len(data) // 4
-
     ### add in prompt functionality
 
     def save_app_ai_events(
@@ -206,39 +122,53 @@ class JobbrAI:
         )
         ae.saveModel()
 
-    def loadContextFile(self, file, alias: str = None):
+    def loadContextFile(
+        self,
+        source_name: str,
+        source_id: Optional[UUID] = None,
+        description: str = None,
+        alias: str = None,
+        extra_data: dict = None,
+    ):
         try:
             self.save_app_ai_events(
                 event_type=AIEventType.CONTEXT,
                 event=AIEvent.LOAD_CONTEXT,
                 event_status=AIEventStatus.STARTED,
-                messages=[file, alias],
+                messages=[source_name, alias],
             )
-            ci = self.context.addAI_CONTEXT_ITEM(
-                source_name=file, type=SourceType.FILE, alias=alias
+
+            ci = self.context.add_ai_context_item(
+                source_name=source_name,
+                source_id=source_id,
+                source_type=SourceType.FILE,
+                description=description,
+                alias=alias,
+                extra_data=extra_data,
             )
             self.save_app_ai_events(
                 event_type=AIEventType.CONTEXT,
                 event=AIEvent.LOAD_CONTEXT,
                 event_status=AIEventStatus.COMPLETED,
-                messages=[file, alias, str(ci.id)],
+                messages=[source_name, alias, str(ci.id)],
             )
             return ci
 
         except Exception as e:
-            print(f"Failed to intially load file {file}: {str(e)}")
+            print(f"Failed to intially load file {source_name}: {str(e)}")
             self.save_app_ai_events(
                 event_type=AIEventType.CONTEXT,
                 event=AIEvent.LOAD_CONTEXT,
                 event_status=AIEventStatus.FAILED,
-                messages=[file, alias],
+                messages=[source_name, alias],
             )
+            raise
 
     def generatePrompt(self, query, prompt_template: str):
 
         contextList = []
         for id in self.context.context_items:
-            if id in self.context.specified_context:
+            if id in self.context.specified_context_ids:
                 contextList.append(
                     f"{self.context.context_items[id]} generated from {self.context.context_items[id].source_name}: {self.context.context_items[id].data}"
                 )
@@ -248,22 +178,36 @@ class JobbrAI:
         prompt_template = ChatPromptTemplate.from_template(prompt_template)
         return prompt_template.format(context=context, question=query)
 
-    def parseRoleHTML(self, roleHTMLFile, alias: str = None):
-        f = Stg_RoleBase.__doc__
+    # def parseRoleHTML(
+    #     self,
+    #     roleHTMLFile,
+    #     alias: str = None,
+    #     description: str = None,
+    #     extra_data: dict = None,
+    # ):
+    #     f = Stg_RoleBase.__doc__
 
-        userMessage = f" Convert the following job posting text to exactly the desired json format {f}. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None. If there is a mention of 'not found' assume the role has been filled and the status is closed. Here is the job posting"
+    #     userMessage = f" Convert the following job posting text to exactly the desired json format {f}. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None. If there is a mention of 'not found' assume the role has been filled and the status is closed. Here is the job posting"
 
-        if not alias:
-            alias = roleHTMLFile
+    #     if not alias:
+    #         alias = roleHTMLFile
 
-        ci = self.loadContextFile(roleHTMLFile, alias=alias)
-        self.context.specified_context = [ci.id]
-        self.parseToDataModel(
-            Stg_Role,
-            AIEvent.PARSE_ROLE_HTML,
-            userMessage,
-            extra_data={"url": alias},
-        )
+    #     if not description:
+    #         description = "A role posting's raw html"
+
+    #     if not extra_data:
+    #         extra_data = {"url": alias}
+
+    #     ci = self.loadContextFile(
+    #         roleHTMLFile, alias=alias, description=description, extra_data=extra_data
+    #     )
+    #     self.context.specified_context_ids = [ci.id]
+    #     return self.parseToDataModel(
+    #         Stg_RoleBase,
+    #         AIEvent.PARSE_ROLE_HTML,
+    #         userMessage,
+    #         extra_data=extra_data,
+    #     )
 
     def parseToDataModel(
         self,
@@ -271,7 +215,7 @@ class JobbrAI:
         aiEvent: AIEvent,
         userMessage: str = None,
         extra_data: dict = None,
-    ):
+    ) -> Tuple[BaseModel, dict]:
 
         if not userMessage:
             userMessage = " Convert the following text to exactly the desired json format provided. Do not add in any new field names use only the ones I have previously provided. If there are any values that cannot be calculated return those as None."
@@ -279,7 +223,6 @@ class JobbrAI:
         prompt = self.generatePrompt(
             userMessage,
             self.parseDataPromptTemplate,
-            specified_context=self.context.specified_context,
         )
 
         estimatedTokens = len(prompt) // 4
@@ -306,21 +249,14 @@ class JobbrAI:
             z = x["raw"]
             payload = x["parsed"]
             parsing_error = str(x["parsing_error"])
-            print(x)
+
             if not z:
                 raise ValueError("No metadata response from model")
             if not payload:
                 raise ValueError("No parsed response from model")
-
+            print(self.lastEvent.id)
             ##TODO remove all custom fields on a parseModel -- maybe create these as a base class as needed or append payload with values
-            baseModel = targetBaseModel(
-                **payload,  # this should fill whatever base
-                ai_app_event_id=self.lastEvent.id,  # this should
-                specified_context=specified_context,  ##TODO Replace this with contextIDs
-                context_id=self.context.id,
-                extra_data=extra_data,
-                ## add contexts
-            ).saveModel()
+            baseModel = targetBaseModel(**payload)
 
             if self.model in [LLM.GPT3, LLM.GPT4]:
                 airR = App_AI_Event(
@@ -361,7 +297,15 @@ class JobbrAI:
                     parsing_error=parsing_error,
                 )
                 airR.saveModel()
-            return baseModel
+
+            return baseModel, {
+                "app_ai_event_id": self.lastEvent.id,
+                "specified_context_ids": [
+                    str(x) for x in self.context.specified_context_ids
+                ],
+                "context_id": self.context.id,
+                "extra_data": extra_data,
+            }
 
         except Exception as e:
 
@@ -372,6 +316,7 @@ class JobbrAI:
                 event_status=AIEventStatus.FAILED,
                 messages=[str(e)],
             )
+            raise
 
 
 if __name__ == "__main__":

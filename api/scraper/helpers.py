@@ -253,12 +253,12 @@ def createURL(url: URLBase) -> URL:
             print(f"Failed to save visible text file: {e}")
 
         try:
-            save_text_to_file(script_texts_file, " ".join(script_texts))
+            save_text_to_file(script_texts_file, "".join(script_texts))
         except Exception as e:
             print(f"Failed to save script texts file: {e}")
 
         try:
-            save_text_to_file(meta_contents_file, " ".join(meta_contents))
+            save_text_to_file(meta_contents_file, "".join(meta_contents))
         except Exception as e:
             print(f"Failed to save meta contents file: {e}")
 
@@ -274,9 +274,13 @@ def createURL(url: URLBase) -> URL:
             type=URLType.ROLE,
             directory=domain,
             snapshotPath=png_file,
+            snapshot_len=None,
             htmlPath=html_file,
+            html_len=len(response_html),
             parseTextPath=text_file,
+            parseText_len=len(parsed_text),
             parseVisibleTextPath=visible_text_file,
+            parseVisible_len=len("".join(visible_text)),
         )
     except Exception as e:
         print(f"An error occurred: {e}")

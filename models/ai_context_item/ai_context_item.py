@@ -6,9 +6,10 @@ from uuid import UUID
 from typing import Optional, List
 
 from sqlalchemy.dialects import postgresql
+from ..enums import SourceType
 
 
-class AI_Context(BaseMixin, SQLModel, table=True):
+class AI_Context_Item(BaseMixin, SQLModel, table=True):
     """
     id the uuid of the record
     file_source the source file of the role
@@ -16,14 +17,21 @@ class AI_Context(BaseMixin, SQLModel, table=True):
     """
 
     id: UUID = Field(primary_key=True)
-    app_ai_id: UUID
-    specified_context_ids: Optional[List[str]] = Field(
+    context_owner_id: UUID  # can be an ai, user, context, or function
+    source_name: str
+    source_type: SourceType
+    source_owner_id: Optional[UUID]
+    description: Optional[str]  # description of context
+    alias: Optional[str]
+    # data: str  # TODO this could become a UII risk this will be whatever is loaded # Eventually store this as a hash
+    estimated_tokens: Optional[int]
+    authorized_users: Optional[List[str]] = Field(
         default=None, sa_column=Column(postgresql.ARRAY(String()))
     )
-    context_ids: Optional[List[str]] = Field(
-        default=None, sa_column=Column(postgresql.ARRAY(String()))
-    )  # this will probably break it
+
     extra_data: Optional[dict] = Field(default=None, sa_column=Column(postgresql.JSONB))
 
     def saveModel(self):
         saveDataModel(self)
+
+    ## delete statment for save if exists
