@@ -75,12 +75,10 @@ async def parse_roleFile(input_url: str, session: Session = Depends(get_session)
             .order_by(desc(URL.created_at))
             .first()
         )
-        print(url)
         if not url:
             try:
                 ub = URLBase(url=input_url)
                 url = createURL(ub)
-                print(url)
                 session.add(url)
                 session.commit()
                 session.refresh(url)
@@ -89,7 +87,6 @@ async def parse_roleFile(input_url: str, session: Session = Depends(get_session)
                 session.rollback()  # Rollback in case of failure
                 raise HTTPException(status_code=400, detail=str(e))
 
-        print("here", url)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"URL not found {e}")
 
@@ -122,7 +119,6 @@ async def parse_roleFile(input_url: str, session: Session = Depends(get_session)
 
             except Exception as e:
                 print(f"Failed to parse role HTML: {str(e)} try {str(tries)}")
-        # print(ai_info)
         sr = Stg_Role(
             **stg_rolebase.model_dump(),
             **ai_info,

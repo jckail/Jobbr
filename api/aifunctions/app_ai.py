@@ -254,7 +254,7 @@ class JobbrAI:
                 raise ValueError("No metadata response from model")
             if not payload:
                 raise ValueError("No parsed response from model")
-            print(self.lastEvent.id)
+
             ##TODO remove all custom fields on a parseModel -- maybe create these as a base class as needed or append payload with values
             baseModel = targetBaseModel(**payload)
 
