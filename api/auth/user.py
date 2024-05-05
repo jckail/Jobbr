@@ -11,7 +11,7 @@ from models import User, UserBase, TokenData, Token
 from typing import List
 
 
-tags_metadata = ["user"]
+tags_metadata = ["auth"]
 router = fastapi.APIRouter(tags=tags_metadata)
 
 
