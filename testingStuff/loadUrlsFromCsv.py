@@ -8,12 +8,12 @@ def post_urls_from_csv(csv_path):
     df = pd.read_csv(csv_path)
     print(df)
 
-    # Ensure the 'Role Link' column exists
-    if "Role Link" not in df.columns:
-        raise ValueError("CSV file must contain a 'Role Link' column")
+    # Ensure the 'url' column exists
+    if "url" not in df.columns:
+        raise ValueError("CSV file must contain a 'url' column")
 
-    # Iterate over the DataFrame using the 'Role Link' column
-    for url in df["Role Link"]:
+    # Iterate over the DataFrame using the 'url' column
+    for url in df["url"]:
         # Prepare the payload for the POST request
         payload = {"url": url}
 
@@ -37,4 +37,4 @@ def post_urls_from_csv(csv_path):
 
 
 if __name__ == "__main__":
-    post_urls_from_csv("/Users/jordankail/Jobbr/testingStuff/jobs.csv")
+    post_urls_from_csv("/Users/jordankail/Jobbr/urls.csv")
