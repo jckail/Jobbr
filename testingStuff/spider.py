@@ -5,4 +5,4 @@ app = Spider(api_key="apiKey")
 
 # Scrape a single URL
 url = "https://spider.cloud"
-scraped_data = app.scrape_url(url)
+scraped_data = scrape_url(url)

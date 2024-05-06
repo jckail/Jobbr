@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from api.learning import band, album, special
 from api.scraper import url
 from api.aifunctions import parseRole
+from api.supabase import supaAuth
 
 from api.auth import privateEndpointExample, user
 
@@ -15,10 +16,11 @@ app = FastAPI(
     license_info={"name": "MIT"},
 )
 
+app.include_router(supaAuth.router)
 app.include_router(privateEndpointExample.router)
 app.include_router(parseRole.router)
-app.include_router(band.router)
-app.include_router(album.router)
-app.include_router(user.router)
-app.include_router(special.router)
+# app.include_router(band.router)
+# app.include_router(album.router)
+# app.include_router(user.router)
+# app.include_router(special.router)
 app.include_router(url.router)
