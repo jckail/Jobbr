@@ -45,28 +45,28 @@ def fileToModelLoader(model, file, baseModel: BaseModel, aiEvent: AIEvent):
     )
 
 
-def findOrAddURL(input_url: str, session: Session):
+def findOrAddURL(input_url: str, session: Session, parse_type: str):
+    # try:
+    #     url = (
+    #         session.query(URL)
+    #         .filter(URL.url == input_url)
+    #         .order_by(desc(URL.created_at))
+    #         .first()
+    #     )
+    #     if not url:
     try:
-        url = (
-            session.query(URL)
-            .filter(URL.url == input_url)
-            .order_by(desc(URL.created_at))
-            .first()
-        )
-        if not url:
-            try:
-                ub = URLBase(url=input_url)
-                url = createURL(ub)
-                session.add(url)
-                session.commit()
-                session.refresh(url)
-
-            except Exception as e:
-                session.rollback()  # Rollback in case of failure
-                raise HTTPException(status_code=400, detail=str(e))
+        ub = URLBase(url=input_url)
+        url = createURL(ub, parse_type)
+        session.add(url)
+        session.commit()
+        session.refresh(url)
 
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"URL not found {e}")
+        session.rollback()  # Rollback in case of failure
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # except Exception as e:
+    #     raise HTTPException(status_code=400, detail=f"URL not found {e}")
     return url
 
 

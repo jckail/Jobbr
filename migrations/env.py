@@ -7,6 +7,8 @@ from pathlib import Path
 from alembic import context
 
 from models import Album, Band
+from dotenv import load_dotenv
+import os
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -33,6 +35,8 @@ target_metadata = SQLModel.metadata  # where table=True
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+load_dotenv()
+config.set_main_option("sqlalchemy.url", os.environ["POSTGRES_URL"])
 
 
 def run_migrations_offline() -> None:
@@ -47,6 +51,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
+
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,

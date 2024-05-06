@@ -15,13 +15,13 @@ from models import (
 )
 from dotenv import load_dotenv
 import os
-load_dotenv()
+
 
 from typing import Optional, List, Tuple
 from pydantic import BaseModel
 from langchain.prompts import ChatPromptTemplate
 from .ai_context import AI_CONTEXT
-
+load_dotenv()
 
 ## will create a context ownership model
 

@@ -37,4 +37,4 @@ def post_urls_from_csv(csv_path):
 
 
 if __name__ == "__main__":
-    post_urls_from_csv("/Users/jordankail/Jobbr/urls.csv")
+    post_urls_from_csv("/Users/jordankail/quarg/jobbr/urls.csv")

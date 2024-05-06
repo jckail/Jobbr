@@ -1,13 +1,17 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException
 from bs4 import BeautifulSoup
 import requests
 from faker import Faker
 from urllib.parse import urlparse
 from models import URL, URLBase, URLType
-from helpers import save_text_to_file, create_directory
+from helpers import (
+    save_text_to_file,
+    create_directory,
+    upload_to_supa_base,
+    appendUnixTime,
+)
 import re
 import os
 import time
@@ -17,9 +21,6 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from langdetect import detect, LangDetectException
 from selenium.webdriver.common.by import By
-
-##TODO move this to env file
-FILE_LOCATION = "scraped_data"
 
 
 def fetch_with_headless_chrome(url):
@@ -176,7 +177,7 @@ def parse_url(url):
         return None, None
 
 
-def createURL(url: URLBase) -> URL:
+def createURL(url: URLBase, scraped_data_type: str) -> URL:
     try:
         url_data = url.dict()
         url_data["url"] = str(url_data["url"])
@@ -217,15 +218,16 @@ def createURL(url: URLBase) -> URL:
 
         domain, fileName = parse_url(url_data["url"])
 
-        base_path = f"{os.getcwd()}/{FILE_LOCATION}/{domain}/snapshots/"
+        base_path = f"{os.getcwd()}/{scraped_data_type}/{domain}/snapshots/"
         create_directory(base_path)
 
-        base_path = f"{os.getcwd()}/{FILE_LOCATION}/{domain}/text_detail/"
+        base_path = f"{os.getcwd()}/{scraped_data_type}/{domain}/text_detail/"
         create_directory(base_path)
 
-        base_path = f"{os.getcwd()}/{FILE_LOCATION}/{domain}/"
+        base_path = f"{os.getcwd()}/{scraped_data_type}/{domain}/"
         create_directory(base_path)
 
+        fileName = appendUnixTime(fileName)
         html_file = base_path + fileName + ".html"
         text_file = base_path + fileName + ".txt"
         visible_text_file = base_path + fileName + "_visible_text" + ".txt"
@@ -239,26 +241,31 @@ def createURL(url: URLBase) -> URL:
 
         try:
             save_text_to_file(html_file, response_html)
+            html_file = upload_to_supa_base(html_file, "scraped_data")
         except Exception as e:
             print(f"Failed to save HTML file: {e}")
 
         try:
             save_text_to_file(text_file, parsed_text)
+            text_file = upload_to_supa_base(text_file, "scraped_data")
         except Exception as e:
             print(f"Failed to save text file: {e}")
 
         try:
             save_text_to_file(visible_text_file, " ".join(visible_text))
+            visible_text_file = upload_to_supa_base(visible_text_file, "scraped_data")
         except Exception as e:
             print(f"Failed to save visible text file: {e}")
 
         try:
             save_text_to_file(script_texts_file, "".join(script_texts))
+            script_texts_file = upload_to_supa_base(script_texts_file, "scraped_data")
         except Exception as e:
             print(f"Failed to save script texts file: {e}")
 
         try:
             save_text_to_file(meta_contents_file, "".join(meta_contents))
+            meta_contents_file = upload_to_supa_base(meta_contents_file, "scraped_data")
         except Exception as e:
             print(f"Failed to save meta contents file: {e}")
 
@@ -266,6 +273,7 @@ def createURL(url: URLBase) -> URL:
             try:
                 with open(png_file, "wb") as file:
                     file.write(screenshot)
+                png_file = upload_to_supa_base(png_file, "scraped_data")
             except Exception as e:
                 print(f"Failed to save screenshot file: {e}")
 

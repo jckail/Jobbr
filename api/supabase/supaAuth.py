@@ -1,30 +1,39 @@
-import os
 from supabase import create_client, Client
 
 import fastapi
-
+from fastapi import HTTPException
+from pydantic import BaseModel
+from db import supabase
 
 tags_metadata = ["supaAuth"]
 router = fastapi.APIRouter(tags=tags_metadata)
 
-url: str = "http://localhost:3000"
-key: str = (
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
-)
 
-supa: Client = create_client(url, key)
-
-
-# @router.get("/sign_up")
-# def sign_up():
-#     res = supa.auth.sign_up(email="testsupa@gmail.com", password="testsupabasenow")
-#     return res.get("access_token")
+@router.post("/sign_up")
+async def signup_user(email: str, password: str):
+    try:
+        user = supabase.auth.sign_up(credentials={"email": email, "password": password})
+        return {"user": user}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"An error occurred: {e}")
 
 
-# @router.get("/sign_in")
-# def sign_in():
+@router.get("/sign_in")
+def sign_in(email: str, password: str):
+    res = supabase.auth.sign_in_with_password({"email": email, "password": password})
+    return res
 
-#     res = supa.auth.sign_in_with_password(
-#         {"email": "testsupa@gmail.com", "password": "testsupabasenow"}
-#     )
-#     return res.get("access_token")
+
+@router.get("/sign_out")
+def sign_out():
+    res = supabase.auth.sign_out()
+    return res
+
+
+@router.post("/session")
+async def get_session():
+    try:
+        res = supabase.auth.get_session()
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"An error occurred: {e}")

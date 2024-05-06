@@ -28,7 +28,7 @@ async def parse_roleFile(input_url: str, session: Session = Depends(get_session)
     Returns:
         URL: The created URL object.
     """
-    url = findOrAddURL(input_url, session)
+    url = findOrAddURL(input_url, session, "role_url")
     try:
         max_tries = 3
         tries = 0

@@ -57,7 +57,7 @@ async def add_role_urls(
     created_urls = []
     try:
         for url_data in urls:
-            new_url = createURL(url_data)
+            new_url = createURL(url_data, "role_url")
             session.add(new_url)
             session.commit()
             session.refresh(new_url)

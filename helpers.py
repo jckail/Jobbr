@@ -2,6 +2,31 @@ import os
 import random
 import time
 import glob
+from db import supabase
+import time
+
+
+def download_from_supa_base(remote_path, bucket_id, local_path=None):
+    if not local_path:
+        local_path = remote_path
+    with open(local_path, "wb+") as f:
+        res = supabase.storage.from_(bucket_id).download(remote_path)
+        f.write(res)
+    return local_path
+
+
+def appendUnixTime(fileName):
+    return str(int(time.time())) + "_" + fileName
+
+
+def upload_to_supa_base(local_path, bucket_id, remote_path=None):
+    # Open the file in binary mode and upload
+    local_path = local_path.replace(f"{os.getcwd()}/", "")
+    if not remote_path:
+        remote_path = local_path
+    with open(local_path, "rb") as f:
+        supabase.storage.from_(bucket_id).upload(file=f, path=remote_path)
+    return remote_path
 
 
 def save_text_to_file(file_path, text):

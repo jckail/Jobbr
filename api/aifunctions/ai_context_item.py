@@ -7,7 +7,7 @@ from models import (
 
 
 from typing import Optional, List, Any
-from helpers import load_file
+from helpers import load_file, download_from_supa_base
 
 
 ## will create a context ownership model
@@ -90,7 +90,8 @@ class AI_CONTEXT_ITEM:
         """
         try:
             if self.source_type == SourceType.FILE:
-                self.data = load_file(self.source_name)
+                fileName = download_from_supa_base(self.source_name, "scraped_data")
+                self.data = load_file(fileName)
                 self.estimated_tokens = len(self.data)
 
             return self.data
