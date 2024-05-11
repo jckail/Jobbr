@@ -2,3 +2,6 @@ scraped_data*
 .env
 .venv
 role_url
+.DS_Store
+__pycache__*
+job_post*

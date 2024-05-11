@@ -72,7 +72,9 @@ def findOrAddURL(input_url: str, session: Session, parse_type: str):
 
 def estimate_cost(num_tokens, rate_per_million=10.0):
     print((num_tokens / 1_000_000) * rate_per_million)
-    return float(round(float((float(num_tokens) / 1_000_000) * rate_per_million), 5))
+    return float(
+        round(float((float(num_tokens) / 1_000_000) * rate_per_million), 5)
+    )
 
 
 def modelDecider(url, tries):
@@ -89,10 +91,14 @@ def modelDecider(url, tries):
     try:
 
         if url.html_len < 8500 and tries == 1:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}"
+            )
             return LLM.GPT4, url.htmlPath
         if url.parseText_len < 8500 and tries == 1:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}"
+            )
             return LLM.GPT4, url.parseTextPath
         if url.parseVisible_len < 8500 and tries == 1:
             print(
@@ -101,7 +107,9 @@ def modelDecider(url, tries):
             return LLM.GPT4, url.parseVisibleTextPath
 
         if url.html_len < 15500 and tries == 1:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len,.5))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len,.5))}"
+            )
             return LLM.GPT3, url.htmlPath
         if url.parseText_len < 15500 and tries == 1:
             print(
@@ -115,10 +123,14 @@ def modelDecider(url, tries):
             return LLM.GPT3, url.parseVisibleTextPath
 
         if url.html_len < 30000 and tries < 3:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}"
+            )
             return LLM.GPT4, url.htmlPath
         if url.parseText_len < 30000 and tries < 3:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}"
+            )
             return LLM.GPT4, url.parseTextPath
         if url.parseVisible_len < 30000 and tries < 3:
             print(
@@ -127,10 +139,14 @@ def modelDecider(url, tries):
             return LLM.GPT4, url.parseVisibleTextPath
 
         if url.html_len < 60000 and tries < 3:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}"
+            )
             return LLM.GPT4, url.htmlPath
         if url.parseText_len < 60000 and tries < 3:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}"
+            )
             return LLM.GPT4, url.parseTextPath
         if url.parseVisible_len < 60000 and tries < 3:
             print(
@@ -139,10 +155,14 @@ def modelDecider(url, tries):
             return LLM.GPT4, url.parseVisibleTextPath
 
         if url.html_len < 90000 and tries < 3:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.html_len))}"
+            )
             return LLM.GPT4, url.htmlPath
         if url.parseText_len < 90000 and tries < 3:
-            print(f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}")
+            print(
+                f"\n -- \n Estimated Cost: {str(estimate_cost(url.parseText_len))}"
+            )
             return LLM.GPT4, url.parseTextPath
         if url.parseVisible_len < 90000 and tries < 3:
             print(

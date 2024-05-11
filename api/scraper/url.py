@@ -7,6 +7,7 @@ from models import URL, URLBase
 
 from api.scraper.helpers import createURL
 from typing import List
+from .token_validator import validate_token
 
 
 tags_metadata = ["url"]
@@ -16,7 +17,7 @@ FILE_LOCATION = "scraped_data"
 
 
 @router.post("/api/role_url", response_model=URL)
-async def add_role_url(url: URLBase, session: Session = Depends(get_session)) -> URL:
+async def add_role_url(url: URLBase, session: Session = Depends(get_session),token: dict = Depends(validate_token)) -> URL:
     """
     Create a new URL entry as a role type.
 
@@ -29,7 +30,7 @@ async def add_role_url(url: URLBase, session: Session = Depends(get_session)) ->
     """
     try:
 
-        new_url = createURL(url)
+        new_url = createURL(url, "job_post")
 
         session.add(new_url)
         session.commit()

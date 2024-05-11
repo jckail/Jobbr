@@ -26,7 +26,9 @@ class Stg_Role(Stg_RoleBase, table=True):
         default=None, sa_column=Column(postgresql.ARRAY(String()))
     )
     context_id: Optional[UUID]  # this will probably break it
-    extra_data: Optional[dict] = Field(default=None, sa_column=Column(postgresql.JSONB))
+    extra_data: Optional[dict] = Field(
+        default=None, sa_column=Column(postgresql.JSONB)
+    )
 
     url_id: Optional[UUID]
     url: Optional[str]
