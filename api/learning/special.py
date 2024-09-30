@@ -14,6 +14,7 @@ from models import User, UserBase, TokenData, Token
 from typing import List, Optional
 
 SECRET_KEY = "e26da5723c636703177cf3f036cfab42efdf11d79f632a79cb40daacf6e006be"
+## This is for example purposes, if deplyed in prod do not have this here.
 ALGORITHM = "HS256"
 tags_metadata = ["special"]
 router = fastapi.APIRouter(tags=tags_metadata)

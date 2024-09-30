@@ -12,7 +12,7 @@ from langchain.text_splitter import (
     RecursiveCharacterTextSplitter,
 )
 
-openai.api_key = "sk-proj-S6OHkmcumvbFPU9geTuFT3BlbkFJGcGsLRjGl5MrNMNEzbxy"
+openai.api_key = "already deleted"
 
 
 def cleanDocPageContent(doc):

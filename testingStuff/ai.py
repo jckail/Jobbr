@@ -18,7 +18,7 @@ import os
 # TODO understand how to embed a PDF into a vector datbase
 
 
-openai.api_key = "sk-proj-S6OHkmcumvbFPU9geTuFT3BlbkFJGcGsLRjGl5MrNMNEzbxy"
+openai.api_key = "already deleted"
 
 
 def loadDocument(file_path: str):

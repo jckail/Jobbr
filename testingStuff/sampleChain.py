@@ -3,7 +3,7 @@ from sqlalchemy import create_engine, text
 import openai
 
 
-openai.api_key = "sk-proj-S6OHkmcumvbFPU9geTuFT3BlbkFJGcGsLRjGl5MrNMNEzbxy"
+openai.api_key = "already deleted"
 job_file_location = "/Users/jordankail/Jobbr/testingStuff/jobs.csv"
 dburl = "postgresql+psycopg2://postgres:postgres@localhost:5432/exampledb"
 
