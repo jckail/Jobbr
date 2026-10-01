@@ -1,209 +1,143 @@
-from collections import Counter
-from datetime import timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from . import __version__, services
+from . import __version__, repo, serializers, services, stats
 from .config import get_settings
 from .db import get_session
-from .models import Application, ApplicationEvent, Company, Extraction, Job, Match, Stage, utcnow
+from .models import Extraction, Profile, Stage, pk
 from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn
-from .skills import normalize_skills
+from .serializers import Json
 
 router = APIRouter(prefix="/api")
 
+SessionDep = Annotated[Session, Depends(get_session)]
 
-def require_token(x_jobbr_token: str | None = Header(default=None)) -> None:
-    tok = get_settings().api_token
-    if tok and x_jobbr_token != tok:
+
+def require_token(x_jobbr_token: Annotated[str | None, Header()] = None) -> None:
+    token = get_settings().api_token
+    if token and x_jobbr_token != token:
         raise HTTPException(401, "This Jobbr instance is read-only without a valid token.")
 
 
 write = [Depends(require_token)]
 
 
-def _job_out(job: Job, company: Company, match: Match | None, app: Application | None, detail=False) -> dict:
-    d = job.model_dump(exclude={"raw_text"} if not detail else set())
-    d["company"] = {"id": company.id, "name": company.name, "domain": company.domain,
-                    "industry": company.industry}
-    d["match"] = match.model_dump(exclude={"id", "job_id", "profile_id"}) if match else None
-    d["application"] = (
-        app.model_dump(exclude={"id", "job_id"}) if app else {"stage": Stage.saved, "notes": ""}
-    )
-    return d
+def _profile(s: Session) -> Profile:
+    return services.get_profile(s)
 
 
-def _load(s: Session, job_id: int) -> tuple[Job, Company, Match | None, Application | None]:
-    job = s.get(Job, job_id)
-    if not job:
+def _row(s: Session, job_id: int) -> repo.JobRow:
+    rows = repo.job_rows(s, pk(_profile(s)), job_id)
+    if not rows:
         raise HTTPException(404, "Job not found")
-    prof = services.get_profile(s)
-    return (job, s.get(Company, job.company_id),
-            s.exec(select(Match).where(Match.job_id == job_id, Match.profile_id == prof.id)).first(),
-            s.exec(select(Application).where(Application.job_id == job_id)).first())
+    return rows[0]
+
+
+def _detail(s: Session, job_id: int) -> Json:
+    return serializers.job_out(_row(s, job_id), detail=True)
+
+
+def _user_error(e: services.UserError) -> HTTPException:
+    return HTTPException(422, str(e))
 
 
 @router.get("/health")
-def health():
+def health() -> Json:
     return {"ok": True, "version": __version__}
 
 
 @router.get("/config")
-def config():
+def config() -> Json:
     st = get_settings()
-    return {"version": __version__, "llm_enabled": st.llm_enabled, "model": st.model if st.llm_enabled else None,
-            "write_protected": bool(st.api_token)}
+    return {
+        "version": __version__,
+        "llm_enabled": st.llm_enabled,
+        "model": st.model if st.llm_enabled else None,
+        "write_protected": bool(st.api_token),
+    }
+
+
+# --- jobs -------------------------------------------------------------------
 
 
 @router.get("/jobs")
 def list_jobs(
+    s: SessionDep,
     q: str | None = None,
     stage: Stage | None = None,
     remote: str | None = None,
     min_score: int = 0,
-    sort: str = Query("score", pattern="^(score|recent|comp)$"),
-    s: Session = Depends(get_session),
-):
-    prof = services.get_profile(s)
-    rows = s.exec(
-        select(Job, Company, Match, Application)
-        .join(Company, Company.id == Job.company_id)
-        .outerjoin(Match, (Match.job_id == Job.id) & (Match.profile_id == prof.id))
-        .outerjoin(Application, Application.job_id == Job.id)
-    ).all()
-    out = []
-    ql = q.lower() if q else None
-    for job, c, m, a in rows:
-        if ql and ql not in f"{job.title} {c.name} {' '.join(job.skills)}".lower():
-            continue
-        if stage and (a.stage if a else Stage.saved) != stage:
-            continue
-        if remote and job.remote_policy.value != remote:
-            continue
-        if (m.score if m else 0) < min_score:
-            continue
-        out.append(_job_out(job, c, m, a))
-    key = {"score": lambda j: -(j["match"]["score"] if j["match"] else -1),
-           "recent": lambda j: -j["first_seen_at"].timestamp(),
-           "comp": lambda j: -(j["comp_max"] or 0)}[sort]
-    return sorted(out, key=key)
+    sort: Annotated[str, Query(pattern="^(score|recent|comp)$")] = "score",
+) -> list[Json]:
+    rows = repo.filter_rows(repo.job_rows(s, pk(_profile(s))), q, stage, remote, min_score)
+    return [serializers.job_out(r) for r in sorted(rows, key=repo.SORTS[sort])]
 
 
 @router.post("/jobs", status_code=201, dependencies=write)
-def add_job(body: JobCreate, s: Session = Depends(get_session)):
+def add_job(body: JobCreate, s: SessionDep) -> Json:
     try:
         job = services.ingest(s, body)
     except services.UserError as e:
-        raise HTTPException(422, str(e)) from e
-    return _job_out(*_load(s, job.id), detail=True)
+        raise _user_error(e) from e
+    return _detail(s, pk(job))
 
 
 @router.get("/jobs/{job_id}")
-def get_job(job_id: int, s: Session = Depends(get_session)):
-    out = _job_out(*_load(s, job_id), detail=True)
-    out["extractions"] = [e.model_dump() for e in s.exec(
-        select(Extraction).where(Extraction.job_id == job_id).order_by(Extraction.id.desc()))]
-    app = s.exec(select(Application).where(Application.job_id == job_id)).first()
-    out["events"] = [e.model_dump() for e in s.exec(
-        select(ApplicationEvent).where(ApplicationEvent.application_id == (app.id if app else -1))
-        .order_by(ApplicationEvent.id.desc()))] if app else []
+def get_job(job_id: int, s: SessionDep) -> Json:
+    row = _row(s, job_id)
+    out = serializers.job_out(row, detail=True)
+    out["extractions"] = [e.model_dump() for e in repo.extractions_for(s, job_id)]
+    out["events"] = (
+        [e.model_dump() for e in repo.events_for(s, pk(row.application))] if row.application else []
+    )
     return out
 
 
 @router.patch("/jobs/{job_id}", dependencies=write)
-def patch_job(job_id: int, body: JobPatch, s: Session = Depends(get_session)):
-    job, *_ = _load(s, job_id)
-    data = body.model_dump(exclude_unset=True)
-    if data.get("company"):
-        job.company_id = services._company(s, data.pop("company")).id
-    data.pop("company", None)
-    if "skills" in data and data["skills"] is not None:
-        data["skills"] = normalize_skills(data["skills"])
-    for k, v in data.items():
-        setattr(job, k, v)
-    s.add(job)
-    services.rematch(s, job)
-    s.commit()
-    return _job_out(*_load(s, job_id), detail=True)
+def patch_job(job_id: int, body: JobPatch, s: SessionDep) -> Json:
+    services.patch_job(s, _row(s, job_id).job, body)
+    return _detail(s, job_id)
 
 
 @router.post("/jobs/{job_id}/reextract", dependencies=write)
-def reextract(job_id: int, s: Session = Depends(get_session)):
-    job = _load(s, job_id)[0]
+def reextract(job_id: int, s: SessionDep) -> Json:
     try:
-        services.reextract(s, job)
+        services.reextract(s, _row(s, job_id).job)
     except services.UserError as e:
-        raise HTTPException(422, str(e)) from e
-    return _job_out(*_load(s, job_id), detail=True)
+        raise _user_error(e) from e
+    return _detail(s, job_id)
 
 
 @router.delete("/jobs/{job_id}", status_code=204, dependencies=write)
-def delete_job(job_id: int, s: Session = Depends(get_session)):
-    job = _load(s, job_id)[0]
-    app = s.exec(select(Application).where(Application.job_id == job_id)).first()
-    if app:
-        for e in s.exec(select(ApplicationEvent).where(ApplicationEvent.application_id == app.id)):
-            s.delete(e)
-        s.flush()
-        s.delete(app)
-    for model in (Match, Extraction):
-        for r in s.exec(select(model).where(model.job_id == job_id)):
-            s.delete(r)
-    s.flush()
-    s.delete(job)
-    s.commit()
+def delete_job(job_id: int, s: SessionDep) -> None:
+    services.delete_job(s, _row(s, job_id).job)
 
 
 @router.put("/jobs/{job_id}/application", dependencies=write)
-def put_application(job_id: int, body: ApplicationIn, s: Session = Depends(get_session)):
-    _load(s, job_id)
+def put_application(job_id: int, body: ApplicationIn, s: SessionDep) -> Json:
+    _row(s, job_id)  # 404 if missing
     services.set_application(s, job_id, body)
-    return _job_out(*_load(s, job_id), detail=False)
+    return serializers.job_out(_row(s, job_id))
+
+
+# --- profile & stats --------------------------------------------------------
 
 
 @router.get("/profile")
-def get_profile(s: Session = Depends(get_session)):
-    return services.get_profile(s)
+def get_profile(s: SessionDep) -> Profile:
+    return _profile(s)
 
 
 @router.put("/profile", dependencies=write)
-def put_profile(body: ProfileIn, s: Session = Depends(get_session)):
+def put_profile(body: ProfileIn, s: SessionDep) -> Profile:
     return services.save_profile(s, body)
 
 
 @router.get("/stats")
-def stats(s: Session = Depends(get_session)):
-    prof = services.get_profile(s)
-    rows = s.exec(
-        select(Job, Company, Match, Application)
-        .join(Company, Company.id == Job.company_id)
-        .outerjoin(Match, (Match.job_id == Job.id) & (Match.profile_id == prof.id))
-        .outerjoin(Application, Application.job_id == Job.id)
-    ).all()
-    stages = Counter((a.stage.value if a else "saved") for *_, a in rows)
-    demand: Counter = Counter()
-    for job, *_ in rows:
-        demand.update(job.skills)
-    have = set(prof.skills)
-    scores = [m.score for _, _, m, _ in rows if m]
-    comps = [(j.comp_min + j.comp_max) // 2 for j, *_ in rows if j.comp_min and j.comp_max]
-    since = utcnow() - timedelta(days=13)
-    per_day = Counter(j.first_seen_at.date().isoformat() for j, *_ in rows if j.first_seen_at >= since)
-    days = [(since + timedelta(days=i)).date().isoformat() for i in range(14)]
+def get_stats(s: SessionDep) -> Json:
+    profile = _profile(s)
     cost = s.exec(select(func.coalesce(func.sum(Extraction.cost_usd), 0.0))).one()
-    top = sorted(rows, key=lambda r: -(r[2].score if r[2] else -1))[:5]
-    return {
-        "totals": {"jobs": len(rows), "companies": len({c.id for _, c, _, _ in rows}),
-                   "avg_score": round(sum(scores) / len(scores)) if scores else None,
-                   "median_comp": sorted(comps)[len(comps) // 2] if comps else None,
-                   "ai_cost_usd": round(float(cost), 4)},
-        "stages": {st.value: stages.get(st.value, 0) for st in Stage},
-        "skill_demand": [{"skill": k, "jobs": v, "have": k in have} for k, v in demand.most_common(12)],
-        "added_per_day": [{"day": d, "count": per_day.get(d, 0)} for d in days],
-        "score_buckets": [{"label": f"{lo}-{lo + 19}", "count": sum(lo <= x < lo + 20 or (lo == 80 and x == 100) for x in scores)}
-                          for lo in range(0, 100, 20)],
-        "top_matches": [{"id": j.id, "title": j.title, "company": c.name, "score": m.score if m else None}
-                        for j, c, m, _ in top],
-    }
+    return stats.compute(repo.job_rows(s, pk(profile)), profile, float(cost))

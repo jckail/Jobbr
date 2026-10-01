@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { api } from "../api";
+import { api, errorMessage } from "../api";
 import { Icon, ICONS, Modal, useToast } from "../ui";
 
 export default function AddJob({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
@@ -20,8 +20,8 @@ export default function AddJob({ onClose, onDone }: { onClose: () => void; onDon
       onDone();
       window.location.hash = `/jobs/${j.id}`;
     } catch (e) {
-      const m = (e as Error).message;
-      setErr((e as { status?: number }).status === 401 ? "Editing is locked. Use the 🔒 control in the sidebar to enter the access token." : m);
+      const m = errorMessage(e);
+      setErr(m);
       if (/paste/i.test(m)) setMode("text");
     } finally { setBusy(false); }
   }

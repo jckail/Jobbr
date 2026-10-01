@@ -10,6 +10,14 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
+export const LOCKED_MESSAGE = "Editing is locked. Unlock it with the 🔒 control in the sidebar.";
+
+/** Human-readable text for any thrown value; auth failures get a pointer to the unlock control. */
+export function errorMessage(e: unknown): string {
+  if (e instanceof ApiError && e.status === 401) return LOCKED_MESSAGE;
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const t = getToken();

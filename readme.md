@@ -42,7 +42,9 @@ erDiagram
 cd backend && pip install -e ".[dev]" && JOBBR_SEED_DEMO=1 uvicorn jobbr.main:app --reload
 # UI   (proxies /jobbr/api to :8000)
 cd web && npm install && npm run dev        # http://localhost:5173/jobbr/
-pytest backend                               # tests
+# checks (same as CI)
+(cd backend && ruff check . && ruff format --check . && mypy jobbr && pytest)
+(cd web && npm run check)
 ```
 
 ## Deploy (Kubernetes pod at /jobbr)

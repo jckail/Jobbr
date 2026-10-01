@@ -1,10 +1,16 @@
 """Transparent, deterministic fit scoring. Every point is explainable in `breakdown`."""
 
-from .models import Job, Match, Profile, RemotePolicy, Seniority
+from .models import Job, Match, Profile, RemotePolicy, Seniority, pk
 
 WEIGHTS = {"skills": 55, "seniority": 15, "location": 15, "comp": 15}
-LADDER = [Seniority.intern, Seniority.junior, Seniority.mid, Seniority.senior, Seniority.staff,
-          Seniority.principal]
+LADDER = [
+    Seniority.intern,
+    Seniority.junior,
+    Seniority.mid,
+    Seniority.senior,
+    Seniority.staff,
+    Seniority.principal,
+]
 RANK = {s: i for i, s in enumerate(LADDER)}
 
 
@@ -30,7 +36,7 @@ def _seniority(job: Job, profile: Profile) -> float:
 
 def _location(job: Job, profile: Profile) -> float:
     pref = profile.remote_pref
-    if pref == RemotePolicy.unknown or job.remote_policy == RemotePolicy.unknown:
+    if RemotePolicy.unknown in (pref, job.remote_policy):
         return 0.7
     if job.remote_policy == RemotePolicy.remote:
         return 1.0 if pref in (RemotePolicy.remote, RemotePolicy.hybrid) else 0.8
@@ -49,13 +55,21 @@ def _comp(job: Job, profile: Profile) -> float:
     top = job.comp_max or job.comp_min
     if not top:
         return 0.5
-    return 1.0 if top >= profile.min_comp else max(0.0, 1 - (profile.min_comp - top) / profile.min_comp * 3)
+    return (
+        1.0
+        if top >= profile.min_comp
+        else max(0.0, 1 - (profile.min_comp - top) / profile.min_comp * 3)
+    )
 
 
 def score(job: Job, profile: Profile) -> Match:
     sk, matched, missing = _skills(job, profile)
-    parts = {"skills": sk, "seniority": _seniority(job, profile),
-             "location": _location(job, profile), "comp": _comp(job, profile)}
+    parts = {
+        "skills": sk,
+        "seniority": _seniority(job, profile),
+        "location": _location(job, profile),
+        "comp": _comp(job, profile),
+    }
     total = round(sum(parts[k] * w for k, w in WEIGHTS.items()))
     breakdown = {k: {"score": round(v * 100), "weight": WEIGHTS[k]} for k, v in parts.items()}
     bits = []
@@ -63,5 +77,12 @@ def score(job: Job, profile: Profile) -> Match:
         bits.append(f"You cover {len(matched)} of its skills ({', '.join(matched[:4])}).")
     if missing:
         bits.append(f"Gaps: {', '.join(missing[:4])}.")
-    return Match(job_id=job.id, profile_id=profile.id, score=total, breakdown=breakdown,
-                 matched_skills=matched, missing_skills=missing, rationale=" ".join(bits) or None)
+    return Match(
+        job_id=pk(job),
+        profile_id=pk(profile),
+        score=total,
+        breakdown=breakdown,
+        matched_skills=matched,
+        missing_skills=missing,
+        rationale=" ".join(bits) or None,
+    )

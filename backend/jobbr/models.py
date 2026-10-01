@@ -6,7 +6,7 @@ Job *─1 Profile via Match           (fit score + breakdown, recomputable)
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import NaiveDatetime
@@ -18,20 +18,20 @@ def utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-class RemotePolicy(str, Enum):
+class RemotePolicy(StrEnum):
     remote = "remote"
     hybrid = "hybrid"
     onsite = "onsite"
     unknown = "unknown"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     active = "active"
     closed = "closed"
     unknown = "unknown"
 
 
-class Seniority(str, Enum):
+class Seniority(StrEnum):
     intern = "intern"
     junior = "junior"
     mid = "mid"
@@ -44,7 +44,7 @@ class Seniority(str, Enum):
     unknown = "unknown"
 
 
-class Stage(str, Enum):
+class Stage(StrEnum):
     saved = "saved"
     applied = "applied"
     screen = "screen"
@@ -54,7 +54,7 @@ class Stage(str, Enum):
     withdrawn = "withdrawn"
 
 
-class ExtractMethod(str, Enum):
+class ExtractMethod(StrEnum):
     llm = "llm"
     jsonld = "jsonld"  # schema.org/JobPosting found in the page
     heuristic = "heuristic"
@@ -157,3 +157,10 @@ class ApplicationEvent(SQLModel, table=True):
     to_stage: Stage
     note: str | None = None
     at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+def pk(row: Company | Job | Application | Profile) -> int:
+    """Primary key of a persisted row (narrows Optional[int] for type checkers)."""
+    if row.id is None:
+        raise ValueError(f"{type(row).__name__} has not been flushed yet")
+    return row.id

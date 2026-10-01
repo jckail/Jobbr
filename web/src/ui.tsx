@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { errorMessage } from "./api";
 import { cap, hue, initials, scoreTone } from "./util";
 
 export const Icon = ({ d, ...p }: { d: string } & React.SVGProps<SVGSVGElement>) => (
@@ -76,6 +77,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return <ToastCtx.Provider value={show}>{children}{t && <div className={`toast ${t.err ? "err" : ""}`} role="status">{t.msg}</div>}</ToastCtx.Provider>;
 }
 
+/** Run an async action; toast `ok` on success or the error message on failure. Resolves to success. */
+export function useGuarded() {
+  const toast = useToast();
+  return useCallback(async (fn: () => Promise<unknown>, ok?: string): Promise<boolean> => {
+    try {
+      await fn();
+      if (ok) toast(ok);
+      return true;
+    } catch (e) {
+      toast(errorMessage(e), true);
+      return false;
+    }
+  }, [toast]);
+}
+
 // tiny data hook
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
   const [state, set] = useState<{ data?: T; error?: Error; loading: boolean }>({ loading: true });
@@ -85,6 +101,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
     set((s) => ({ ...s, loading: true }));
     fn().then((data) => live && set({ data, loading: false })).catch((error) => live && set({ error, loading: false }));
     return () => { live = false; };
+    // `fn` is intentionally excluded: callers re-run it via `deps`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
   return { ...state, reload: () => setTick((x) => x + 1) };

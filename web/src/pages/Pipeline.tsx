@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { api } from "../api";
 import { BOARD_STAGES, type Job, type Stage } from "../types";
-import { Empty, Score, StagePill, useAsync, useToast } from "../ui";
+import { Empty, Score, StagePill, useAsync, useGuarded } from "../ui";
 import { ago, cap, comp } from "../util";
 
 export default function Pipeline({ rev, onChange }: { rev: number; onChange: () => void }) {
   const { data, loading, reload } = useAsync(() => api.jobs({ sort: "score" }), [rev]);
   const [over, setOver] = useState<Stage | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
-  const toast = useToast();
+  const guarded = useGuarded();
   if (loading && !data) return <div className="skeleton" style={{ height: 320 }} />;
   const jobs = data ?? [];
   if (!jobs.length) return <Empty title="Your pipeline is empty">Add a job to start tracking it.</Empty>;
@@ -16,8 +16,7 @@ export default function Pipeline({ rev, onChange }: { rev: number; onChange: () 
   async function move(id: number, stage: Stage) {
     const j = jobs.find((x) => x.id === id);
     if (!j || j.application.stage === stage) return;
-    try { await api.setApplication(id, { stage }); onChange(); reload(); }
-    catch (e) { toast((e as { status?: number }).status === 401 ? "Editing is locked — enter the access token in the sidebar." : (e as Error).message, true); }
+    if (await guarded(() => api.setApplication(id, { stage }))) { onChange(); reload(); }
   }
   const card = (j: Job) => (
     <a key={j.id} href={`#/jobs/${j.id}`} className={`kcard ${dragId === j.id ? "drag" : ""}`} draggable

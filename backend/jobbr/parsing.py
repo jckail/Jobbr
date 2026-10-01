@@ -7,6 +7,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from .models import RemotePolicy
 from .schemas import JobExtraction
 from .skills import find_skills, normalize_skills
 
@@ -66,7 +67,9 @@ def jsonld_job(html: str) -> JobExtraction | None:
             a = (loc or {}).get("address", {}) if isinstance(loc, dict) else {}
             if isinstance(a, dict):
                 bits = [a.get("addressLocality"), a.get("addressRegion"), a.get("addressCountry")]
-                s = ", ".join(str(b if not isinstance(b, dict) else b.get("name")) for b in bits if b)
+                s = ", ".join(
+                    str(b if not isinstance(b, dict) else b.get("name")) for b in bits if b
+                )
                 if s:
                     locs.append(s)
         cmin = cmax = None
@@ -75,19 +78,27 @@ def jsonld_job(html: str) -> JobExtraction | None:
         if isinstance(base, dict):
             v = base.get("value", {})
             if isinstance(v, dict):
-                cmin, cmax = v.get("minValue") or v.get("value"), v.get("maxValue") or v.get("value")
+                cmin, cmax = (
+                    v.get("minValue") or v.get("value"),
+                    v.get("maxValue") or v.get("value"),
+                )
                 period = str(v.get("unitText", "YEAR")).upper()
             cur = base.get("currency") or "USD"
         else:
             cur = "USD"
         mult = PERIOD.get(period, 1)
-        remote = "remote" if d.get("jobLocationType") == "TELECOMMUTE" else "unknown"
-        skills = find_skills(f"{d.get('title','')} {desc_text} {d.get('skills','')}")
+        remote = (
+            RemotePolicy.remote
+            if d.get("jobLocationType") == "TELECOMMUTE"
+            else RemotePolicy.unknown
+        )
+        skills = find_skills(f"{d.get('title', '')} {desc_text} {d.get('skills', '')}")
         return JobExtraction(
             company=company or "Unknown",
             title=d.get("title") or "Untitled",
             employment_type=(
-                ", ".join(d["employmentType"]) if isinstance(d.get("employmentType"), list)
+                ", ".join(d["employmentType"])
+                if isinstance(d.get("employmentType"), list)
                 else d.get("employmentType")
             ),
             remote_policy=remote,
@@ -103,7 +114,8 @@ def jsonld_job(html: str) -> JobExtraction | None:
     return None
 
 
-_COMP = re.compile(r"\$\s?(\d{2,3}(?:,\d{3})|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*\$?\s?(\d{2,3}(?:,\d{3})|\d{2,3}\s?[kK])")
+_AMOUNT = r"(\d{2,3}(?:,\d{3})|\d{2,3}\s?[kK])"
+_COMP = re.compile(rf"\$\s?{_AMOUNT}\s*(?:-|\u2013|\u2014|to)\s*\$?\s?{_AMOUNT}")
 _YOE = re.compile(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", re.IGNORECASE)
 
 
@@ -112,20 +124,26 @@ def _money(s: str) -> int:
     return int(s[:-1]) * 1000 if s.endswith("k") else int(s)
 
 
-def heuristic_job(text: str, title_hint: str | None = None, company_hint: str | None = None) -> JobExtraction:
+def heuristic_job(
+    text: str, title_hint: str | None = None, company_hint: str | None = None
+) -> JobExtraction:
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     title = title_hint or (lines[0][:120] if lines else "Untitled role")
     low = text.lower()
-    remote = (
-        "hybrid" if "hybrid" in low
-        else "remote" if re.search(r"\bremote\b", low)
-        else "onsite" if re.search(r"on-?site|in[- ]office", low)
-        else "unknown"
-    )
+    if "hybrid" in low:
+        remote = RemotePolicy.hybrid
+    elif re.search(r"\bremote\b", low):
+        remote = RemotePolicy.remote
+    elif re.search(r"on-?site|in[- ]office", low):
+        remote = RemotePolicy.onsite
+    else:
+        remote = RemotePolicy.unknown
     m = _COMP.search(text)
     cmin, cmax = (_money(m.group(1)), _money(m.group(2))) if m else (None, None)
     yoe = [int(x) for x in _YOE.findall(text)]
-    bullets = [ln.lstrip("•-*· ").strip() for ln in lines if ln[:1] in "•-*·" and 15 < len(ln) < 220]
+    bullets = [
+        ln.lstrip("•-*· ").strip() for ln in lines if ln[:1] in "•-*·" and 15 < len(ln) < 220
+    ]
     return JobExtraction(
         company=company_hint or "Unknown",
         title=title,

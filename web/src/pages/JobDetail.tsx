@@ -1,21 +1,21 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { STAGES, type Stage } from "../types";
-import { Chips, CompanyLogo, Empty, Icon, ICONS, Score, StagePill, useAsync, useToast } from "../ui";
+import { Chips, CompanyLogo, Empty, Icon, ICONS, Score, StagePill, useAsync, useGuarded } from "../ui";
 import { ago, cap, comp } from "../util";
 
 export default function JobDetail({ id, rev, onChange }: { id: number; rev: number; onChange: () => void }) {
   const { data: j, loading, error, reload } = useAsync(() => api.job(id), [id, rev]);
   const [notes, setNotes] = useState("");
-  const toast = useToast();
-  useEffect(() => { if (j) setNotes(j.application.notes ?? ""); }, [j?.id, j?.application.notes]);
+  const guarded = useGuarded();
+  const savedNotes = j?.application.notes ?? "";
+  useEffect(() => { setNotes(savedNotes); }, [j?.id, savedNotes]);
 
   if (loading && !j) return <div className="skeleton" style={{ height: 360 }} />;
   if (error || !j) return <Empty title="Job not found"><a href="#/jobs">Back to jobs</a></Empty>;
 
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
-    try { await fn(); if (ok) toast(ok); onChange(); reload(); }
-    catch (e) { toast((e as { status?: number }).status === 401 ? "Editing is locked — enter the access token in the sidebar." : (e as Error).message, true); }
+    if (await guarded(fn, ok)) { onChange(); reload(); }
   };
   const m = j.match;
   const w: Record<string, string> = { skills: "Skills", seniority: "Level", location: "Location", comp: "Pay" };

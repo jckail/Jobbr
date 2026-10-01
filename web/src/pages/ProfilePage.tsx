@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { Profile } from "../types";
-import { Chips, useAsync, useToast } from "../ui";
+import { Chips, useAsync, useGuarded } from "../ui";
 import { cap } from "../util";
 
 const SENIORITY = ["unknown", "intern", "junior", "mid", "senior", "staff", "principal"];
@@ -10,7 +10,7 @@ export default function ProfilePage({ onChange }: { onChange: () => void }) {
   const { data } = useAsync(api.profile, []);
   const [p, setP] = useState<Profile | null>(null);
   const [busy, setBusy] = useState(false);
-  const toast = useToast();
+  const guarded = useGuarded();
   useEffect(() => { if (data) setP(data); }, [data]);
   if (!p) return <div className="skeleton" style={{ height: 320 }} />;
   const set = <K extends keyof Profile>(k: K, v: Profile[K]) => setP({ ...p, [k]: v });
@@ -18,12 +18,12 @@ export default function ProfilePage({ onChange }: { onChange: () => void }) {
 
   async function save() {
     setBusy(true);
-    try {
-      const { skills: _s, ...rest } = p!; // skills are re-derived from the resume server-side
-      const saved = await api.saveProfile(rest);
-      setP(saved); onChange(); toast(`Saved · re-scored all jobs · ${saved.skills.length} skills detected`);
-    } catch (e) { toast((e as { status?: number }).status === 401 ? "Editing is locked — enter the access token in the sidebar." : (e as Error).message, true); }
-    finally { setBusy(false); }
+    const { skills: _derived, ...rest } = p!; // skills are re-derived from the resume server-side
+    let saved: Profile | undefined;
+    const ok = await guarded(async () => { saved = await api.saveProfile(rest); },
+      "Saved · every job re-scored");
+    if (ok && saved) { setP(saved); onChange(); }
+    setBusy(false);
   }
 
   return (

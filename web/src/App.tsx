@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ApiError, getToken, setToken } from "./api";
+import { api, getToken, setToken } from "./api";
 import AddJob from "./pages/AddJob";
 import Dashboard from "./pages/Dashboard";
 import JobDetail from "./pages/JobDetail";
@@ -29,13 +29,14 @@ function Shell() {
     window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
   }, []);
 
-  const path = route.split("?")[0];
-  const jobMatch = path.match(/^\/jobs\/(\d+)$/);
+  const path = route.split("?")[0] ?? "/";
+  const bump = () => setRev((x) => x + 1);
+  const jobId = /^\/jobs\/(\d+)$/.exec(path)?.[1];
   let page;
-  if (jobMatch) page = <JobDetail id={+jobMatch[1]} rev={rev} onChange={() => setRev((x) => x + 1)} />;
+  if (jobId) page = <JobDetail id={+jobId} rev={rev} onChange={bump} />;
   else if (path === "/jobs") page = <Jobs rev={rev} onAdd={() => setAdding(true)} />;
-  else if (path === "/pipeline") page = <Pipeline rev={rev} onChange={() => setRev((x) => x + 1)} />;
-  else if (path === "/profile") page = <ProfilePage onChange={() => setRev((x) => x + 1)} />;
+  else if (path === "/pipeline") page = <Pipeline rev={rev} onChange={bump} />;
+  else if (path === "/profile") page = <ProfilePage onChange={bump} />;
   else page = <Dashboard rev={rev} onAdd={() => setAdding(true)} llm={cfg.data?.llm_enabled} />;
 
   const active = (to: string) => (to === "/" ? path === "/" : path.startsWith(to)) ? "page" : undefined;
@@ -61,7 +62,7 @@ function Shell() {
         {NAV.map(([to, label, ic]) => <a key={to} href={`#${to}`} aria-current={active(to)}><Icon d={ic} />{label}</a>)}
         <a href="#/" onClick={(e) => { e.preventDefault(); setAdding(true); }}><Icon d={ICONS.plus} />Add</a>
       </nav>
-      {adding && <AddJob onClose={() => setAdding(false)} onDone={() => { setAdding(false); setRev((x) => x + 1); }} />}
+      {adding && <AddJob onClose={() => setAdding(false)} onDone={() => { setAdding(false); bump(); }} />}
       {tokenOpen && <TokenDialog onClose={() => setTokenOpen(false)} />}
     </div>
   );
@@ -81,7 +82,5 @@ function TokenDialog({ onClose }: { onClose: () => void }) {
 }
 
 export default function App() {
-  useEffect(() => { /* surface auth errors globally */ }, []);
   return <ToastProvider><Shell /></ToastProvider>;
 }
-export { ApiError };

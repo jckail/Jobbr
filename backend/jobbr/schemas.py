@@ -10,29 +10,39 @@ class JobExtraction(BaseModel):
 
     company: str = Field(description="Hiring company name")
     title: str = Field(description="Job title without team name or location")
-    department: str | None = Field(None, description="Team or department")
+    department: str | None = Field(default=None, description="Team or department")
     seniority: Seniority = Seniority.unknown
-    employment_type: str | None = Field(None, description="e.g. Full-time, Contract")
+    employment_type: str | None = Field(default=None, description="e.g. Full-time, Contract")
     remote_policy: RemotePolicy = RemotePolicy.unknown
     locations: list[str] = Field(default_factory=list, description="'City, State' strings")
-    comp_min: int | None = Field(None, description="Annual minimum base pay in whole currency units")
-    comp_max: int | None = Field(None, description="Annual maximum base pay in whole currency units")
+    comp_min: int | None = Field(
+        default=None, description="Annual minimum base pay in whole currency units"
+    )
+    comp_max: int | None = Field(
+        default=None, description="Annual maximum base pay in whole currency units"
+    )
     comp_currency: str = "USD"
     years_experience_min: int | None = None
-    summary: str | None = Field(None, description="<=280 chars: what this role is")
+    summary: str | None = Field(default=None, description="<=280 chars: what this role is")
     responsibilities: list[str] = Field(default_factory=list, description="<=8 short bullets")
     qualifications: list[str] = Field(default_factory=list, description="<=8 short bullets")
-    skills: list[str] = Field(default_factory=list, description="Required technical skills, lowercase canonical names")
+    skills: list[str] = Field(
+        default_factory=list, description="Required technical skills, lowercase canonical names"
+    )
     nice_to_have: list[str] = Field(default_factory=list, description="Preferred skills")
     benefits: list[str] = Field(default_factory=list)
-    ai_take: str | None = Field(None, description="<=160 chars: who would thrive, and any red flags")
-    posted_at: str | None = Field(None, description="ISO date if stated")
+    ai_take: str | None = Field(
+        default=None, description="<=160 chars: who would thrive, and any red flags"
+    )
+    posted_at: str | None = Field(default=None, description="ISO date if stated")
     industry: str | None = None
 
 
 class JobCreate(BaseModel):
     url: str | None = None
-    text: str | None = Field(None, description="Pasted posting text (use when a page needs JS or login)")
+    text: str | None = Field(
+        default=None, description="Pasted posting text (use when a page needs JS or login)"
+    )
     company: str | None = None
     title: str | None = None
 

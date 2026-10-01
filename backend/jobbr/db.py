@@ -1,43 +1,39 @@
 from collections.abc import Iterator
+from functools import lru_cache
+from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import Engine, event
 from sqlmodel import Session, SQLModel, create_engine
 
+from . import models  # noqa: F401  (registers tables on SQLModel.metadata)
 from .config import get_settings
 
-_engine = None
 
+@lru_cache
+def get_engine() -> Engine:
+    url = get_settings().database_url
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if not url.startswith("sqlite"):
+        return create_engine(url, pool_pre_ping=True)
 
-def get_engine():
-    global _engine
-    if _engine is None:
-        url = get_settings().database_url
-        if url.startswith("postgresql://"):
-            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
-        kwargs = {}
-        if url.startswith("sqlite"):
-            kwargs["connect_args"] = {"check_same_thread": False}
-        _engine = create_engine(url, pool_pre_ping=True, **kwargs)
-        if url.startswith("sqlite"):
+    engine = create_engine(url, connect_args={"check_same_thread": False})
 
-            @event.listens_for(_engine, "connect")
-            def _pragmas(dbapi_conn, _):
-                cur = dbapi_conn.cursor()
-                cur.execute("PRAGMA foreign_keys=ON")
-                cur.execute("PRAGMA journal_mode=WAL")
-                cur.close()
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.close()
 
-    return _engine
+    return engine
 
 
 def reset_engine() -> None:
-    global _engine
-    _engine = None
+    get_engine.cache_clear()
 
 
 def init_db() -> None:
-    from . import models  # noqa: F401  (register tables)
-
     SQLModel.metadata.create_all(get_engine())
 
 
