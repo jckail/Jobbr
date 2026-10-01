@@ -2,3 +2,11 @@ scraped_data*
 .env
 .venv
 role_url
+# v2
+__pycache__/
+*.pyc
+*.db
+*.db-*
+node_modules/
+web/dist/
+.env

@@ -1,0 +1,72 @@
+# kubectl apply -f deploy/k8s.yaml
+# Serves https://jckail.com/jobbr (the app mounts itself at /jobbr, so no ingress rewrite is needed).
+apiVersion: v1
+kind: Namespace
+metadata: { name: jobbr }
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: jobbr, namespace: jobbr }
+type: Opaque
+stringData:
+  # Optional. Without an API key Jobbr uses JSON-LD + heuristics. Without a token, writes are open.
+  JOBBR_ANTHROPIC_API_KEY: ""
+  JOBBR_API_TOKEN: "change-me"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: jobbr-data, namespace: jobbr }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: jobbr, namespace: jobbr }
+spec:
+  replicas: 1          # SQLite on a single volume; point JOBBR_DATABASE_URL at Postgres to scale out
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: jobbr } }
+  template:
+    metadata: { labels: { app: jobbr } }
+    spec:
+      securityContext: { fsGroup: 10001 }
+      containers:
+        - name: jobbr
+          image: ghcr.io/jckail/jobbr:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom: [{ secretRef: { name: jobbr } }]
+          env:
+            - { name: JOBBR_SEED_DEMO, value: "1" }   # demo data on an empty DB; remove for real use
+          readinessProbe: { httpGet: { path: /healthz, port: 8000 } }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 10 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 512Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: data, persistentVolumeClaim: { claimName: jobbr-data } }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: jobbr, namespace: jobbr }
+spec:
+  selector: { app: jobbr }
+  ports: [{ port: 80, targetPort: 8000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jobbr
+  namespace: jobbr
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt   # adjust to your issuer
+spec:
+  tls: [{ hosts: [jckail.com], secretName: jckail-com-tls }]
+  rules:
+    - host: jckail.com
+      http:
+        paths:
+          - { path: /jobbr, pathType: Prefix, backend: { service: { name: jobbr, port: { number: 80 } } } }
