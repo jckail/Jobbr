@@ -37,7 +37,7 @@ for alias, canon in sorted(_ALIAS.items(), key=lambda kv: -len(kv[0])):
     if alias in AMBIGUOUS:
         continue
     esc = re.escape(alias)
-    _PATTERNS.append((canon, re.compile(rf"(?<![\w+#.]){esc}(?![\w+#]|\.\w)", re.I)))
+    _PATTERNS.append((canon, re.compile(rf"(?<![\w+#.]){esc}(?![\w+#]|\.\w)", re.IGNORECASE)))
 _LIST_CTX = {c: re.compile(rf"(?:[,/]\s*{c.capitalize() if c == 'go' else 'R'}\b|\b{c.capitalize() if c == 'go' else 'R'}\b\s*[,/])") for c in AMBIGUOUS}
 
 

@@ -8,8 +8,17 @@ from sqlmodel import Session, select
 
 from . import matching
 from .extract import Result, extract
-from .models import (Application, ApplicationEvent, Company, Extraction, Job, Match,
-                     Profile, Stage, utcnow)
+from .models import (
+    Application,
+    ApplicationEvent,
+    Company,
+    Extraction,
+    Job,
+    Match,
+    Profile,
+    Stage,
+    utcnow,
+)
 from .parsing import html_to_text, parse_date
 from .safefetch import FetchError, fetch_html
 from .schemas import ApplicationIn, JobCreate, ProfileIn

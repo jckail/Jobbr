@@ -104,7 +104,7 @@ def jsonld_job(html: str) -> JobExtraction | None:
 
 
 _COMP = re.compile(r"\$\s?(\d{2,3}(?:,\d{3})|\d{2,3}\s?[kK])\s*(?:-|–|—|to)\s*\$?\s?(\d{2,3}(?:,\d{3})|\d{2,3}\s?[kK])")
-_YOE = re.compile(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", re.I)
+_YOE = re.compile(r"(\d{1,2})\s*\+?\s*(?:years|yrs)", re.IGNORECASE)
 
 
 def _money(s: str) -> int:
@@ -144,6 +144,6 @@ def parse_date(s: str | None) -> datetime | None:
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).replace(tzinfo=None)
+        return datetime.fromisoformat(s).replace(tzinfo=None)
     except ValueError:
         return None

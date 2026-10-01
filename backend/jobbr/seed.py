@@ -4,8 +4,18 @@ from datetime import timedelta
 
 from sqlmodel import Session
 
-from .models import (Application, ApplicationEvent, Company, ExtractMethod, Extraction, Job,
-                     RemotePolicy, Seniority, Stage, utcnow)
+from .models import (
+    Application,
+    ApplicationEvent,
+    Company,
+    Extraction,
+    ExtractMethod,
+    Job,
+    RemotePolicy,
+    Seniority,
+    Stage,
+    utcnow,
+)
 from .schemas import ProfileIn
 from .services import rematch, save_profile
 

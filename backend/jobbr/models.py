@@ -5,7 +5,7 @@ Job 1─1 Application 1─* ApplicationEvent   (pipeline + audit trail)
 Job *─1 Profile via Match           (fit score + breakdown, recomputable)
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -15,7 +15,7 @@ from sqlmodel import Field, SQLModel
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class RemotePolicy(str, Enum):

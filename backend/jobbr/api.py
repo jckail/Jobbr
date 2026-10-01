@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from . import __version__, services
 from .config import get_settings
 from .db import get_session
-from .models import (Application, ApplicationEvent, Company, Extraction, Job, Match, Stage, utcnow)
+from .models import Application, ApplicationEvent, Company, Extraction, Job, Match, Stage, utcnow
 from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn
 from .skills import normalize_skills
 
@@ -114,9 +114,9 @@ def get_job(job_id: int, s: Session = Depends(get_session)):
 
 @router.patch("/jobs/{job_id}", dependencies=write)
 def patch_job(job_id: int, body: JobPatch, s: Session = Depends(get_session)):
-    job, c, *_ = _load(s, job_id)
+    job, *_ = _load(s, job_id)
     data = body.model_dump(exclude_unset=True)
-    if "company" in data and data["company"]:
+    if data.get("company"):
         job.company_id = services._company(s, data.pop("company")).id
     data.pop("company", None)
     if "skills" in data and data["skills"] is not None:
