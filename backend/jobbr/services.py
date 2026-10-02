@@ -145,7 +145,7 @@ def _apply_extraction(job: Job, result: Result, text: str) -> None:
 
 
 def sorted_pair(lo: int | None, hi: int | None) -> tuple[int | None, int | None]:
-    return (hi, lo) if lo and hi and lo > hi else (lo, hi)
+    return (hi, lo) if lo is not None and hi is not None and lo > hi else (lo, hi)
 
 
 def _record_extraction(s: Session, job: Job, result: Result) -> None:
@@ -215,6 +215,7 @@ def patch_job(s: Session, job: Job, body: JobPatch) -> Job:
         data["skills"] = normalize_skills(data["skills"])
     for k, v in data.items():
         setattr(job, k, v)
+    job.comp_min, job.comp_max = sorted_pair(job.comp_min, job.comp_max)
     s.add(job)
     rematch(s, job)
     s.commit()

@@ -9,6 +9,8 @@ const SENIORITY = ["unknown", "intern", "junior", "mid", "senior", "staff", "pri
 export default function ProfilePage({ onChange }: { onChange: () => void }) {
   const { data, loading, error, reload } = useAsync(api.profile, []);
   const [p, setP] = useState<Profile | null>(null);
+  const [locations, setLocations] = useState("");
+  const [targetTitles, setTargetTitles] = useState("");
   const [busy, setBusy] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [uploadBusy, setUploadBusy] = useState(false);
@@ -23,7 +25,13 @@ export default function ProfilePage({ onChange }: { onChange: () => void }) {
     return () => { mounted.current = false; };
   }, []);
   const guarded = useGuarded();
-  useEffect(() => { if (data) setP(data); }, [data]);
+  useEffect(() => {
+    if (data) {
+      setP(data);
+      setLocations(data.locations.join("; "));
+      setTargetTitles(data.target_titles.join(", "));
+    }
+  }, [data]);
   if (!p && (loading || (data && !error))) return <div className="skeleton" style={{ height: 320 }} aria-label="Loading profile" />;
   if (error) return <Empty title="Unable to load your profile"><p role="alert">{errorMessage(error)}</p><button className="btn" onClick={reload} disabled={loading}>{loading ? "Retrying…" : "Try again"}</button></Empty>;
   if (!p) return <Empty title="Your profile is unavailable"><button className="btn" onClick={reload}>Try again</button></Empty>;
@@ -36,9 +44,14 @@ export default function ProfilePage({ onChange }: { onChange: () => void }) {
     setBusy(true);
     const { skills: _derived, ...rest } = p!; // skills are re-derived from the resume server-side
     let saved: Profile | undefined;
-    const ok = await guarded(async () => { saved = await api.saveProfile(rest); },
+    const ok = await guarded(async () => { saved = await api.saveProfile({ ...rest, locations: locations.split(";").map((place) => place.trim()).filter(Boolean), target_titles: list(targetTitles) }); },
       "Saved · every job re-scored");
-    if (mounted.current && ok && saved) { setP(saved); onChange(); }
+    if (mounted.current && ok && saved) {
+      setP(saved);
+      setLocations(saved.locations.join("; "));
+      setTargetTitles(saved.target_titles.join(", "));
+      onChange();
+    }
     saveRunning.current = false;
     if (mounted.current) setBusy(false);
   }
@@ -132,8 +145,8 @@ export default function ProfilePage({ onChange }: { onChange: () => void }) {
             <label className="field">Work style<select disabled={busy} value={p.remote_pref} onChange={(e) => set("remote_pref", e.target.value as Profile["remote_pref"])}><option value="unknown">No preference</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="onsite">On-site</option></select></label>
             <label className="field">Minimum pay (USD)<input type="number" disabled={busy} step={5000} min={0} value={p.min_comp ?? ""} onChange={(e) => set("min_comp", e.target.value ? +e.target.value : null)} /></label>
           </div>
-          <label className="field">Locations <small>comma separated</small><input type="text" disabled={busy} value={p.locations.join(", ")} onChange={(e) => set("locations", list(e.target.value))} placeholder="Seattle, WA, New York, NY" /></label>
-          <label className="field">Target titles <small>comma separated</small><input type="text" disabled={busy} value={p.target_titles.join(", ")} onChange={(e) => set("target_titles", list(e.target.value))} /></label>
+          <label className="field">Locations <small>separate places with semicolons</small><input type="text" disabled={busy} value={locations} onChange={(e) => setLocations(e.target.value)} placeholder="Seattle, WA; New York, NY" /></label>
+          <label className="field">Target titles <small>comma separated</small><input type="text" disabled={busy} value={targetTitles} onChange={(e) => setTargetTitles(e.target.value)} /></label>
           <div><h3 style={{ marginBottom: 8 }}>Detected skills ({p.skills.length})</h3>{p.skills.length ? <Chips items={p.skills} kind="have" max={60} /> : <span className="muted">Save to detect skills from your resume.</span>}</div>
         </section>
       </div>

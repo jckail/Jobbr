@@ -46,7 +46,7 @@ export default function JobDetail({ id, rev, onChange, llmEnabled }: { id: numbe
             </div>
             {j.ai_take && <p style={{ margin: "16px 0 0", padding: "10px 14px", background: "var(--accent-soft)", borderRadius: 10 }}>✦ {j.ai_take}</p>}
             <dl className="facts" style={{ margin: "18px 0 0" }}>
-              <div><dt>Pay</dt><dd>{comp(j.comp_min, j.comp_max)}</dd></div>
+              <div><dt>Pay</dt><dd>{comp(j.comp_min, j.comp_max, j.comp_currency)}</dd></div>
               <div><dt>Work style</dt><dd>{cap(j.remote_policy)}</dd></div>
               <div><dt>Location</dt><dd>{j.locations.join(" · ") || "—"}</dd></div>
               <div><dt>Level</dt><dd>{cap(j.seniority)}{j.years_experience_min ? ` · ${j.years_experience_min}+ yrs` : ""}</dd></div>

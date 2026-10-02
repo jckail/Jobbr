@@ -1,8 +1,14 @@
-export const money = (n: number | null | undefined, compact = true) =>
-  n == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: compact ? "compact" : "standard", maximumFractionDigits: compact ? 1 : 0 }).format(n);
+export const money = (n: number | null | undefined, compact = true, currency = "USD") => {
+  if (n == null) return "—";
+  if (!/^[A-Z]{3}$/.test(currency)) return `${n.toLocaleString()} (currency not listed)`;
+  const code = currency;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: code, notation: compact ? "compact" : "standard", maximumFractionDigits: compact ? 1 : 0 }).format(n);
+  } catch { return `${code} ${n.toLocaleString()}`; }
+};
 
-export const comp = (min: number | null, max: number | null) =>
-  min && max ? `${money(min)} – ${money(max)}` : min || max ? money(min ?? max) : "Not listed";
+export const comp = (min: number | null, max: number | null, currency = "USD") =>
+  min != null && max != null ? `${money(min, true, currency)} – ${money(max, true, currency)}` : min != null || max != null ? money(min ?? max, true, currency) : "Not listed";
 
 // The API stores naive UTC timestamps.
 export const parseDate = (s: string) => new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s + "Z");

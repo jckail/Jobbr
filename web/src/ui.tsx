@@ -67,11 +67,13 @@ export const Empty = ({ title, children }: { title: string; children?: ReactNode
 
 export function Modal({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) {
   const dialog = useRef<HTMLDivElement>(null);
+  // Capture before child autoFocus runs during commit, so cleanup restores the opener.
+  const opener = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const close = useRef(onClose);
   const titleId = useId();
   useEffect(() => { close.current = onClose; }, [onClose]);
   useEffect(() => {
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previous = opener.current;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusable = () => Array.from(dialog.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]') ?? []).filter((element) => element.getClientRects().length > 0);

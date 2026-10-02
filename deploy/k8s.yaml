@@ -1,5 +1,6 @@
-# kubectl apply -f deploy/k8s.yaml
-# Serves https://jckail.com/jobbr (the app mounts itself at /jobbr, so no ingress rewrite is needed).
+# Deployment template; resolve the target context, image digest, Secret, ingress
+# controller and TLS configuration before applying. See docs/DEPLOYMENT_ACCEPTANCE.md.
+# Target: https://jckail.com/jobbr (the app mounts itself at /jobbr; preserve the prefix).
 apiVersion: v1
 kind: Namespace
 metadata: { name: jobbr }
@@ -16,7 +17,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: { name: jobbr, namespace: jobbr }
 spec:
-  replicas: 1          # SQLite on a single volume; point JOBBR_DATABASE_URL at Postgres to scale out
+  replicas: 1          # SQLite and in-memory OIDC require one instance; Postgres alone does not permit scale-out.
   strategy: { type: Recreate }
   selector: { matchLabels: { app: jobbr } }
   template:

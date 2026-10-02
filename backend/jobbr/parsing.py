@@ -1,6 +1,7 @@
 """HTML → clean text, schema.org JobPosting extraction, and a heuristic fallback extractor."""
 
 import json
+import math
 import re
 from datetime import datetime
 from typing import Any
@@ -28,13 +29,13 @@ def _jsonld_blocks(soup: BeautifulSoup) -> list[Any]:
     for tag in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(tag.string or "")
-        except (json.JSONDecodeError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             continue
         stack = data if isinstance(data, list) else [data]
         while stack:
             d = stack.pop()
             if isinstance(d, dict):
-                if "@graph" in d:
+                if isinstance(d.get("@graph"), list):
                     stack.extend(d["@graph"])
                 out.append(d)
     return out
@@ -57,61 +58,76 @@ def jsonld_job(html: str) -> JobExtraction | None:
         t = d.get("@type")
         if t != "JobPosting" and not (isinstance(t, list) and "JobPosting" in t):
             continue
-        org = d.get("hiringOrganization") or {}
-        company = org.get("name") if isinstance(org, dict) else str(org)
-        desc_html = d.get("description") or ""
-        desc_text = BeautifulSoup(desc_html, "lxml").get_text(" ", strip=True)
-        locs: list[str] = []
-        jl = d.get("jobLocation") or []
-        for loc in jl if isinstance(jl, list) else [jl]:
-            a = (loc or {}).get("address", {}) if isinstance(loc, dict) else {}
-            if isinstance(a, dict):
-                bits = [a.get("addressLocality"), a.get("addressRegion"), a.get("addressCountry")]
-                s = ", ".join(
-                    str(b if not isinstance(b, dict) else b.get("name")) for b in bits if b
-                )
-                if s:
-                    locs.append(s)
-        cmin = cmax = None
-        period = "YEAR"
-        base = d.get("baseSalary")
-        if isinstance(base, dict):
-            v = base.get("value", {})
-            if isinstance(v, dict):
-                cmin, cmax = (
-                    v.get("minValue") or v.get("value"),
-                    v.get("maxValue") or v.get("value"),
-                )
-                period = str(v.get("unitText", "YEAR")).upper()
-            cur = base.get("currency") or "USD"
-        else:
-            cur = "USD"
-        mult = PERIOD.get(period, 1)
-        remote = (
-            RemotePolicy.remote
-            if d.get("jobLocationType") == "TELECOMMUTE"
-            else RemotePolicy.unknown
-        )
-        skills = find_skills(f"{d.get('title', '')} {desc_text} {d.get('skills', '')}")
-        return JobExtraction(
-            company=company or "Unknown",
-            title=d.get("title") or "Untitled",
-            employment_type=(
-                ", ".join(d["employmentType"])
-                if isinstance(d.get("employmentType"), list)
-                else d.get("employmentType")
-            ),
-            remote_policy=remote,
-            locations=locs,
-            comp_min=int(float(cmin) * mult) if cmin else None,
-            comp_max=int(float(cmax) * mult) if cmax else None,
-            comp_currency=cur,
-            summary=desc_text[:400] or None,
-            responsibilities=_listify(desc_html)[:10],
-            skills=skills,
-            posted_at=d.get("datePosted"),
-        )
+        try:
+            return _jsonld_posting(d)
+        except (ValueError, TypeError, OverflowError, AttributeError, RecursionError):
+            # A bad block must not prevent another block or plain-text fallback.
+            continue
     return None
+
+
+def _annual_pay(value: Any, multiplier: int) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise TypeError("Invalid salary")
+    annual = float(value) * multiplier
+    if not math.isfinite(annual) or not 0 <= annual <= 1_000_000_000:
+        raise ValueError("Invalid salary")
+    return int(annual)
+
+
+def _jsonld_posting(d: dict[str, Any]) -> JobExtraction:
+    org = d.get("hiringOrganization") or {}
+    company = org.get("name") if isinstance(org, dict) else str(org)
+    desc_html = d.get("description") or ""
+    desc_text = BeautifulSoup(desc_html, "lxml").get_text(" ", strip=True)
+    locs: list[str] = []
+    jl = d.get("jobLocation") or []
+    for loc in jl if isinstance(jl, list) else [jl]:
+        a = (loc or {}).get("address", {}) if isinstance(loc, dict) else {}
+        if isinstance(a, dict):
+            bits = [a.get("addressLocality"), a.get("addressRegion"), a.get("addressCountry")]
+            s = ", ".join(str(b if not isinstance(b, dict) else b.get("name")) for b in bits if b)
+            if s:
+                locs.append(s)
+    cmin = cmax = None
+    period = "YEAR"
+    base = d.get("baseSalary")
+    if isinstance(base, dict):
+        v = base.get("value", {})
+        if isinstance(v, dict):
+            cmin, cmax = (
+                v.get("minValue", v.get("value")),
+                v.get("maxValue", v.get("value")),
+            )
+            period = str(v.get("unitText", "YEAR")).upper()
+        cur = base.get("currency") or "USD"
+    else:
+        cur = "USD"
+    mult = PERIOD.get(period, 1)
+    remote = (
+        RemotePolicy.remote if d.get("jobLocationType") == "TELECOMMUTE" else RemotePolicy.unknown
+    )
+    skills = find_skills(f"{d.get('title', '')} {desc_text} {d.get('skills', '')}")
+    return JobExtraction(
+        company=company or "Unknown",
+        title=d.get("title") or "Untitled",
+        employment_type=(
+            ", ".join(d["employmentType"])
+            if isinstance(d.get("employmentType"), list)
+            else d.get("employmentType")
+        ),
+        remote_policy=remote,
+        locations=locs,
+        comp_min=_annual_pay(cmin, mult),
+        comp_max=_annual_pay(cmax, mult),
+        comp_currency=cur,
+        summary=desc_text[:400] or None,
+        responsibilities=_listify(desc_html)[:10],
+        skills=skills,
+        posted_at=d.get("datePosted"),
+    )
 
 
 _AMOUNT = r"(\d{2,3}(?:,\d{3})|\d{2,3}\s?[kK])"

@@ -30,7 +30,7 @@ export default function Jobs({ rev, onAdd }: { rev: number; onAdd: () => void })
               <CompanyLogo name={j.company.name} />
               <div style={{ minWidth: 0 }}>
                 <h2>{j.title}</h2>
-                <div className="meta"><span>{j.company.name}</span><span>{j.remote_policy !== "unknown" ? cap(j.remote_policy) : ""}</span><span>{j.locations[0] ?? ""}</span><span>{comp(j.comp_min, j.comp_max)}</span><span>{ago(j.first_seen_at)}</span></div>
+                <div className="meta"><span>{j.company.name}</span><span>{j.remote_policy !== "unknown" ? cap(j.remote_policy) : ""}</span><span>{j.locations[0] ?? ""}</span><span>{comp(j.comp_min, j.comp_max, j.comp_currency)}</span><span>{ago(j.first_seen_at)}</span></div>
                 <Chips items={j.skills} kind="accent" max={6} />
               </div>
               <div className="right"><Score value={j.match?.score} /><StagePill stage={j.application.stage} /></div>

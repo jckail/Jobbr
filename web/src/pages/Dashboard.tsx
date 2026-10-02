@@ -1,7 +1,7 @@
 import { api } from "../api";
 import { BOARD_STAGES, type Job, type Profile } from "../types";
 import { Chips, CompanyLogo, Empty, Icon, ICONS, Score, StagePill, useAsync } from "../ui";
-import { cap, money, parseDate } from "../util";
+import { cap, comp, money, parseDate } from "../util";
 
 function Bars({ rows }: { rows: { label: string; value: number; have?: boolean }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
@@ -11,13 +11,7 @@ function Bars({ rows }: { rows: { label: string; value: number; have?: boolean }
 }
 
 function roleComp(job: Job): string {
-  const currency = /^[A-Z]{3}$/.test(job.comp_currency) ? job.comp_currency : "USD";
-  const format = (value: number) => {
-    try { return new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(value); }
-    catch { return `${currency} ${value.toLocaleString()}`; }
-  };
-  if (job.comp_min == null && job.comp_max == null) return "Pay not listed";
-  return job.comp_min != null && job.comp_max != null ? `${format(job.comp_min)} – ${format(job.comp_max)}` : format((job.comp_min ?? job.comp_max)!);
+  return comp(job.comp_min, job.comp_max, job.comp_currency);
 }
 
 function MatchCard({ job }: { job: Job }) {

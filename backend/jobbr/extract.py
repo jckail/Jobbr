@@ -45,7 +45,10 @@ def extract(
     settings = get_settings()
     start = time.monotonic()
     error = None
-    data = jsonld_job(html) if html else None
+    try:
+        data = jsonld_job(html) if html else None
+    except (ValueError, TypeError, OverflowError, AttributeError, RecursionError):
+        data = None  # Malformed external metadata must not block plain-text extraction.
     method = ExtractMethod.jsonld
     model = None
     input_tokens = output_tokens = 0

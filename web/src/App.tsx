@@ -67,6 +67,7 @@ function Shell() {
   useEffect(() => {
     if (!allowed) return;
     const handler = (event: KeyboardEvent) => {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (event.key === "n" && !/INPUT|TEXTAREA|SELECT/.test((event.target as HTMLElement).tagName) && !event.metaKey && !event.ctrlKey) {
         event.preventDefault(); setAdding(true);
       }

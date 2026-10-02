@@ -107,7 +107,8 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled(_request: Request, exc: Exception) -> JSONResponse:
-        log.exception("unhandled", exc_info=exc)
+        # Database exception strings/tracebacks can contain bound resume or posting data.
+        log.error("unhandled exception type=%s", type(exc).__name__)
         return JSONResponse({"detail": "Internal error"}, status_code=500)
 
     return app

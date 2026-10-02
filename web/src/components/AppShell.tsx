@@ -57,6 +57,7 @@ export default function AppShell({ children, path, onAdd, onThemeToggle, authCon
     const keyboard = (event: KeyboardEvent) => {
       if (accessAllowed && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
+        if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
         setSearchOpen((open) => !open);
       }
     };
