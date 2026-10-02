@@ -184,6 +184,19 @@ def patch_job(job_id: int, body: JobPatch, s: SessionDep) -> Json:
     return _detail(s, job_id)
 
 
+def require_availability_authority(request: Request) -> None:
+    if not request.app.state.auth.settings.auth_enabled and not get_settings().api_token:
+        raise HTTPException(403, "Configure private owner access before checking availability.")
+
+
+@router.post(
+    "/jobs/{job_id}/availability",
+    dependencies=[*read, *write, Depends(require_availability_authority)],
+)
+async def check_availability(job_id: int, s: SessionDep) -> Json:
+    return await services.observe_job_availability(s, _row(s, job_id).job)
+
+
 @router.post("/jobs/{job_id}/reextract", dependencies=ai_write)
 def reextract(job_id: int, s: SessionDep, settings: SettingsDep) -> Json:
     try:

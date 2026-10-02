@@ -64,7 +64,7 @@ does not prove that a posting is still available.
 Source review found that current discovery snapshots expose `fetched_at` and
 `truncated`, while failures are fetch errors rather than posting availability.
 Filtered searches, the first-100 window and rejected links cannot prove a saved
-posting disappeared. Freshness implementation remains pending.
+posting disappeared. An explicit transient observation is now implemented; combined verification and browser acceptance remain pending.
 
 A bounded next step is a private, explicit `Check availability` action on a saved
 job. Resolve the identity from server-owned mapping or a recognized saved URL,
@@ -84,3 +84,24 @@ or application/draft changes. Use checked-snapshot wording in discovery instead
 of implying current availability. A short response alone does not prove board
 completeness. Tests should cover disappearance from a complete board, first-100
 misses, outages/404s, alias identity, private access and unchanged saved history.
+
+
+### Implementation verification checkpoint
+
+`POST /api/jobs/{id}/availability` requires an owner session and CSRF, or a
+configured instance token. Unsecured demo instances cannot initiate this check.
+The service resolves only server-owned identity, releases its read transaction,
+and performs one deadline-bounded board fetch using a shared four-worker limiter.
+Observations do not persist or alter application state. Greenhouse absence
+requires explicit `meta.total` equality and a fully validated board within the
+100-row bound; Lever absence remains unknown. A valid target in the inspected
+window can establish listed status even when the board is larger.
+
+Vendor semantics were checked against the official
+[Greenhouse Job Board API](https://docs.greenhouse.io/job-board.html#list-jobs)
+and [Lever postings API](https://github.com/lever/postings-api#get-a-list-of-job-postings).
+Focused checks passed 59 discovery cases, seven API cases with one PostgreSQL
+skip, and strict mypy across the four affected backend modules. The UI has
+explicit checking, retry and timestamp states; web/full gate and real browser
+acceptance remain unverified. Source-independent Graphify results lacked Jobbr
+coverage; live source and dependency-free Codemogger text retrieval were used.

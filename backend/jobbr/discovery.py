@@ -4,10 +4,12 @@ import json
 import re
 import time
 from datetime import UTC, datetime
+from functools import partial
 from html import unescape
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
+import anyio
 import httpcore
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import safefetch
 from .api import require_access
+from .canonical import Identity, identity_for_url
 from .config import get_settings
 from .parsing import html_to_text
 
@@ -103,7 +106,7 @@ def board_endpoint(provider: Provider, board: str) -> str:
     return f"https://api.lever.co/v0/postings/{board}?mode=json&limit=100"
 
 
-def fetch_board_json(endpoint: str) -> str:
+def fetch_board_json(endpoint: str, *, deadline: float | None = None) -> str:
     """Use hardened fetch primitives with no redirects outside the exact vendor endpoint."""
     board_pattern = r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}"
     allowed = (
@@ -112,7 +115,9 @@ def fetch_board_json(endpoint: str) -> str:
     )
     if not any(re.fullmatch(pattern, endpoint) for pattern in allowed):
         raise DiscoveryError("Unsupported discovery endpoint.")
-    deadline = time.monotonic() + get_settings().fetch_timeout_s
+    deadline = (
+        deadline if deadline is not None else time.monotonic() + get_settings().fetch_timeout_s
+    )
     try:
         parsed, address = safefetch._resolve_url(endpoint, deadline)
         with (
@@ -268,3 +273,120 @@ def board_postings(
         raise HTTPException(422, "Choose a valid board token, not a URL.") from exc
     except DiscoveryError as exc:
         raise HTTPException(502, str(exc)) from exc
+
+
+AvailabilityReason = Literal[
+    "listed",
+    "absent_complete_board",
+    "incomplete_snapshot",
+    "upstream_unavailable",
+    "invalid_data",
+    "unsupported_identity",
+]
+
+
+class AvailabilityObservation(BaseModel):
+    state: Literal["available", "unavailable", "unknown"]
+    checked_at: datetime
+    source_url: str | None
+    reason: AvailabilityReason
+
+
+# Bounded offload, shared across requests. Workers are never abandoned on cancellation;
+# the pinned fetch and subprocess DNS resolver enforce the original monotonic deadline.
+_OBSERVATION_LIMITER = anyio.CapacityLimiter(4)
+OBSERVATION_BYTES = 1024 * 1024
+
+
+def _observation(
+    state: Literal["available", "unavailable", "unknown"],
+    reason: AvailabilityReason,
+    source_url: str | None,
+) -> AvailabilityObservation:
+    return AvailabilityObservation(
+        state=state, reason=reason, source_url=source_url, checked_at=datetime.now(UTC)
+    )
+
+
+def _availability_rows(payload: object, provider: Provider) -> list[object]:
+    rows = (
+        payload
+        if provider == "lever"
+        else payload.get("jobs")
+        if isinstance(payload, dict)
+        else None
+    )
+    if not isinstance(rows, list):
+        raise TypeError("Unsupported board payload")
+    return rows
+
+
+def _classify_availability(
+    content: str, identity: Identity, endpoint: str
+) -> AvailabilityObservation:
+    try:
+        if len(content.encode("utf-8")) > OBSERVATION_BYTES:
+            return _observation("unknown", "incomplete_snapshot", endpoint)
+        payload = json.loads(content)
+        rows = _availability_rows(payload, identity.provider)
+        truncated = len(rows) > MAX_RESULTS
+        seen: set[str] = set()
+        found = False
+        for raw in rows[:MAX_RESULTS]:
+            if identity.provider == "greenhouse":
+                row = _GreenhousePosting.model_validate(raw)
+                source_id, url, title = str(row.id), row.absolute_url, row.title
+            else:
+                lever = _LeverPosting.model_validate(raw)
+                source_id, url, title = lever.id, lever.hostedUrl, lever.text
+            expected = Identity(identity.provider, identity.board, source_id)
+            if not title.strip() or identity_for_url(url) != expected or source_id in seen:
+                return _observation("unknown", "invalid_data", endpoint)
+            seen.add(source_id)
+            found = found or expected == identity
+        if found:
+            return _observation("available", "listed", endpoint)
+        # Official Greenhouse Job Board API returns all posts and meta.total:
+        # https://docs.greenhouse.io/job-board.html#get-list-jobs
+        # Require matching explicit total, not merely a short local result window.
+        if identity.provider == "greenhouse" and isinstance(payload, dict):
+            meta = payload.get("meta")
+            total = meta.get("total") if isinstance(meta, dict) else None
+            if not truncated and type(total) is int and total >= 0 and total == len(rows):
+                return _observation("unavailable", "absent_complete_board", endpoint)
+        # Lever documents limit as "at most N", without an explicit total/completion
+        # marker: https://github.com/lever/postings-api#get-a-list-of-job-postings
+        # A short or empty response alone therefore never proves absence here.
+        return _observation("unknown", "incomplete_snapshot", endpoint)
+    except (TypeError, ValueError, ValidationError, RecursionError, UnicodeError, OverflowError):
+        return _observation("unknown", "invalid_data", endpoint)
+
+
+async def observe_identity(identity: Identity | None) -> AvailabilityObservation:
+    """Observe public listing membership, without capture, profile reads or paid calls."""
+    if identity is None:
+        return _observation("unknown", "unsupported_identity", None)
+    path = (
+        f"/{identity.board}/jobs/{identity.posting_id}"
+        if identity.provider == "greenhouse"
+        else f"/{identity.board}/{identity.posting_id}"
+    )
+    host = "boards.greenhouse.io" if identity.provider == "greenhouse" else "jobs.lever.co"
+    if identity_for_url("https://" + host + path) != identity:
+        return _observation("unknown", "unsupported_identity", None)
+    try:
+        endpoint = board_endpoint(identity.provider, identity.board)
+    except ValueError:
+        return _observation("unknown", "unsupported_identity", None)
+    timeout = get_settings().fetch_timeout_s
+    deadline = time.monotonic() + timeout
+    try:
+        with anyio.fail_after(timeout):
+            content = await anyio.to_thread.run_sync(
+                partial(fetch_board_json, endpoint, deadline=deadline),
+                limiter=_OBSERVATION_LIMITER,
+                abandon_on_cancel=False,
+            )
+    except (DiscoveryError, TimeoutError):
+        return _observation("unknown", "upstream_unavailable", endpoint)
+    return _classify_availability(content, identity, endpoint)

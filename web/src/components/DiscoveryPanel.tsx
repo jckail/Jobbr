@@ -53,8 +53,8 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
 
   return (
     <details className="card discovery-panel">
-      <summary><span>Find live opportunities</span><span className="muted">Search a company’s career board</span></summary>
-      <p className="muted">Find current openings on Greenhouse or Lever, review the posting, then choose what to save. Nothing is imported automatically.</p>
+      <summary><span>Check a career board</span><span className="muted">Review a company’s posting snapshot</span></summary>
+      <p className="muted">Check Greenhouse or Lever for a snapshot of published postings, review the source, then choose what to save. Availability can change after the check. Nothing is imported automatically.</p>
       {config.loading ? <p role="status">Checking extraction settings…</p> : config.error ? <div><p role="alert">{errorMessage(config.error)}</p><button className="btn" onClick={config.reload}>Retry extraction settings</button></div> : config.data && <p className="muted">{config.data.llm_enabled ? `Saving may send posting text to ${config.data.ai_provider_label} (${config.data.ai_model}) for extraction and incur API charges. Dollar cost is not estimated. Your resume is not included.` : "Saving uses structured posting data and offline heuristics. AI extraction is unavailable for the selected server provider."}</p>}
       <form onSubmit={search} className="stack">
         <div className="grid2">
@@ -81,7 +81,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
       </form>
       {error && <p className="form-error" role="alert">{error}</p>}
       {snapshot && <div className="discovery-results" aria-live="polite">
-        <p className="muted">{snapshot.postings.length} openings · {cap(snapshot.provider)} · checked {new Date(snapshot.fetched_at).toLocaleString()}. <a href={snapshot.source_url} target="_blank" rel="noopener noreferrer">View source</a></p>
+        <p className="muted">{snapshot.postings.length} postings in this checked snapshot · {cap(snapshot.provider)} · checked {new Date(snapshot.fetched_at).toLocaleString()}. <a href={snapshot.source_url} target="_blank" rel="noopener noreferrer">View source</a></p>
         <p className="muted">Postings may change after this check. Search again to refresh this snapshot, and review the source before applying.</p>
         {snapshot.truncated && <p className="muted">Only the first 100 postings were checked. Keywords filter that same window; review the company’s board for all openings.</p>}
         {!!snapshot.skipped_unsafe_links && <p className="muted">{snapshot.skipped_unsafe_links} incomplete or unsafe postings were omitted.</p>}

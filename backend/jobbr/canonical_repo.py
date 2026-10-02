@@ -203,3 +203,23 @@ def existing_job(s: Session, job_id: int) -> Job | None:
         .with_for_update()
         .execution_options(populate_existing=True)
     ).first()
+
+
+def saved_identity(s: Session, job: Job) -> Identity | None:
+    """Read server-owned identity without adopting rows or taking write locks."""
+    rows = s.exec(
+        select(JobExternalIdentity)
+        .where(JobExternalIdentity.job_id == pk(job))
+        .order_by(col(JobExternalIdentity.id))
+        .limit(2)
+    ).all()
+    if not rows:
+        return identity_for_url(job.url)
+    if len(rows) != 1:
+        return None  # Conflicting mappings cannot assert a posting's availability.
+    row = rows[0]
+    if row.provider == "greenhouse":
+        return Identity("greenhouse", row.board, row.posting_id)
+    if row.provider == "lever":
+        return Identity("lever", row.board, row.posting_id)
+    return None

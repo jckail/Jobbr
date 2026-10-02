@@ -850,3 +850,13 @@ def accept_tailoring(
         ) from exc
     save_profile(s, accepted)
     return profile_output(s, profile)
+
+
+async def observe_job_availability(s: Session, job: Job) -> serializers.Json:
+    """Capture server identity, release the read transaction, then check its board."""
+    from .discovery import observe_identity  # noqa: PLC0415 -- discovery router imports API guards.
+
+    identity = canonical_repo.saved_identity(s, job)
+    s.rollback()
+    observation = await observe_identity(identity)
+    return observation.model_dump(mode="json")

@@ -78,3 +78,10 @@ backend/web/extension/release checks are still required before publication.
 Upstream availability/freshness tracking remains the next discovery increment.
 Real Chrome, website registration, paid provider verification, the tested local
 image upgrade and production acceptance remain open.
+
+
+Explicit transient availability observations are now implemented and focused
+backend checks pass. Complete the combined gate and rendered UI acceptance.
+Persisted availability history, broader board completeness/pagination and
+canonical saved-result hydration remain follow-ups; no automatic closing or
+deleting is introduced.

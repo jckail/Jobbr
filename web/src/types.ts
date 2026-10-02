@@ -37,6 +37,12 @@ export interface Job {
   extractions?: { id: number; method: string; model: string | null; cost_usd: number; latency_ms: number; error: string | null; created_at: string }[];
   events?: { id: number; from_stage: Stage | null; to_stage: Stage; note: string | null; at: string }[];
 }
+export interface AvailabilityObservation {
+  state: "available" | "unavailable" | "unknown";
+  checked_at: string;
+  source_url: string | null;
+  reason: "listed" | "absent_complete_board" | "incomplete_snapshot" | "upstream_unavailable" | "invalid_data" | "unsupported_identity";
+}
 export interface ProfileSnapshot {
   name: string;
   headline: string | null;

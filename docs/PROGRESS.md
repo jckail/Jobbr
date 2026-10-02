@@ -252,3 +252,27 @@ source and focused review were used. Agent Hub still does not select this
 worktree's memory scope. These are retrieval gaps, not passing-check evidence.
 Real Chrome acceptance remains held for the other agent's installation-path
 repair handoff; no configuration changes or path workaround were attempted.
+
+
+## Explicit availability source increment
+
+Root integrated the team's transient availability panel and bounded backend
+observation. The protected POST checks only the saved server identity, releases
+its read transaction before network dispatch, and never invokes AI or mutates
+job/application history. Listed status requires a valid matching identity;
+absence requires complete validated Greenhouse data with an explicit total.
+Lever absence, truncation, malformed data and upstream failures remain unknown.
+Discovery now uses checked-snapshot wording. No migration was added.
+
+After agent sessions errored loading workspace requirements, root took over
+their unfinished verification. Focused discovery checks passed 59 cases; private
+API/session-CSRF checks passed seven cases with one PostgreSQL case skipped
+without a disposable service. Strict mypy passed four affected backend modules.
+Web dependencies are not installed in this worktree, so web checks remain part
+of the guarded full gate. The shared slot was still occupied on a nonblocking
+probe; no repeated gate was queued. Independent read-only source review found no concrete blocker; it ran no tests or builds.
+
+AgentMon registration/feed tools were absent from both scoped and complete
+Toolport discovery in this session. No registration, heartbeat or dashboard
+completion is claimed. Actual repository/worktree ownership remains unchanged;
+curated local checkpoints remain the coordination fallback.

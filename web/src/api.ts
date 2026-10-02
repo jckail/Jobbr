@@ -1,4 +1,4 @@
-import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, ExtensionGrant, ExtensionPairing, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, SavedTailoringDraft, Stage, Stats, TailoringDraft, TailoringResult } from "./types";
+import type { AuthSession, AvailabilityObservation, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, ExtensionGrant, ExtensionPairing, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, SavedTailoringDraft, Stage, Stats, TailoringDraft, TailoringResult } from "./types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const TOKEN_KEY = "jobbr.token";
@@ -124,6 +124,7 @@ export const api = {
   patchJob: (id: number, b: Partial<Pick<Job, "title" | "remote_policy" | "comp_min" | "comp_max" | "skills" | "summary">>) =>
     req<Job>(`/jobs/${id}`, body("PATCH", b)),
   reextract: (id: number, config?: Config) => req<Job>(`/jobs/${id}/reextract`, { method: "POST", headers: aiHeaders(config) }),
+  checkAvailability: (id: number) => req<AvailabilityObservation>(`/jobs/${id}/availability`, { method: "POST" }),
   deleteJob: (id: number) => req<void>(`/jobs/${id}`, { method: "DELETE" }),
   setApplication: (id: number, b: { stage?: Stage; notes?: string; next_step_at?: string | null; note?: string }) =>
     req<Job>(`/jobs/${id}/application`, body("PUT", b)),
