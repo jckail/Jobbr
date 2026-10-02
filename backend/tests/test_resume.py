@@ -1,8 +1,10 @@
 import asyncio
 import io
+import secrets
 import time
 
 import pytest
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -167,22 +169,31 @@ def test_oidc_preview_requires_session_origin_and_csrf(env):
     env.setenv("JOBBR_OPENAI_CLIENT_ID", "oaiapp_resume_test")
     env.setenv("JOBBR_OPENAI_ALLOWED_SUBJECT", "owner")
     env.setenv("JOBBR_OPENAI_REDIRECT_URI", "https://jobbr.example/jobbr/auth/openai/callback")
+    env.setenv("JOBBR_OPENAI_STORE_KEY", Fernet.generate_key().decode())
     app = create_app()
     service = app.state.auth
-    service.sessions["test-session"] = SessionRecord(
-        issuer=ISSUER,
-        client_id="oaiapp_resume_test",
-        subject="owner",
-        name=None,
-        email=None,
-        csrf_token="resume-csrf",
-        expires_at=time.time() + 300,
-    )
     with TestClient(app, base_url="https://jobbr.example") as client:
+        # Sessions live in the persistent auth store; the CSRF token is derived from the cookie.
+        cookie = secrets.token_urlsafe(32)
+        csrf = service.store.csrf(cookie)
+        service.store.rotate_session(
+            "",
+            cookie,
+            SessionRecord(
+                issuer=ISSUER,
+                client_id="oaiapp_resume_test",
+                subject="owner",
+                name=None,
+                email=None,
+                csrf_token=csrf,
+                expires_at=time.time() + 300,
+            ),
+            service.scope,
+        )
         assert client.post(PATH, files={"file": ("r.pdf", pdf_bytes())}).status_code == 401
-        client.cookies.set(SESSION_COOKIE, "test-session")
+        client.cookies.set(SESSION_COOKIE, cookie)
         assert client.post(PATH, files={"file": ("r.pdf", pdf_bytes())}).status_code == 403
-        headers = {"Origin": "https://jobbr.example", "X-CSRF-Token": "resume-csrf"}
+        headers = {"Origin": "https://jobbr.example", "X-CSRF-Token": csrf}
         assert (
             client.post(
                 PATH,
