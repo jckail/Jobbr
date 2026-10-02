@@ -80,7 +80,12 @@ def _annual_pay(value: Any, multiplier: int) -> int | None:
 def _jsonld_posting(d: dict[str, Any]) -> JobExtraction:
     org = d.get("hiringOrganization") or {}
     company = org.get("name") if isinstance(org, dict) else str(org)
+    # JSON-LD is untrusted. A non-string description is malformed: reject the block so the
+    # caller falls back to the page text (BeautifulSoup raises a different exception type
+    # per Python version when handed a dict or list, so never pass one through).
     desc_html = d.get("description") or ""
+    if not isinstance(desc_html, str):
+        raise TypeError("JobPosting description must be a string")
     desc_text = BeautifulSoup(desc_html, "lxml").get_text(" ", strip=True)
     locs: list[str] = []
     jl = d.get("jobLocation") or []

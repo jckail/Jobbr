@@ -84,6 +84,7 @@ def test_pasted_public_url_does_not_resolve_dns(client, monkeypatch):
     [
         {"@graph": None},
         {"@type": "JobPosting", "description": {"invalid": True}},
+        {"@type": "JobPosting", "description": ["not", "a", "string"]},
         {"@type": "JobPosting", "baseSalary": {"value": {"minValue": "Competitive"}}},
         {"@type": "JobPosting", "baseSalary": {"value": {"minValue": "Infinity"}}},
         {"@type": "JobPosting", "baseSalary": {"value": {"minValue": 1e100}}},
