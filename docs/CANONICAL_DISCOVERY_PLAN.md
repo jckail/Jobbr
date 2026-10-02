@@ -58,3 +58,29 @@ mandatory combined gate remain pending. No canonical source has been published.
 
 Discovery freshness is a separate remaining task. An identity or timestamp alone
 does not prove that a posting is still available.
+
+## Next increment: explicit availability observations
+
+Source review found that current discovery snapshots expose `fetched_at` and
+`truncated`, while failures are fetch errors rather than posting availability.
+Filtered searches, the first-100 window and rejected links cannot prove a saved
+posting disappeared. Freshness implementation remains pending.
+
+A bounded next step is a private, explicit `Check availability` action on a saved
+job. Resolve the identity from server-owned mapping or a recognized saved URL,
+then fetch one fixed vendor board through the existing hardened transport.
+Return a transient observation with `checked_at`, a checked source URL, a fixed
+reason and one of these states:
+
+- Available: the target identity was listed when checked; this does not certify
+  the employer is still hiring.
+- Unavailable: the target is absent from a proven complete, valid, unfiltered
+  board response. Vendor completeness semantics must be verified first.
+- Unknown: truncated/partial snapshots, malformed or skipped data, unsupported
+  identity, timeout, 403/429/5xx or a board-level 404.
+
+Keep this read-only: no migration, provider dispatch, automatic closing, deletion
+or application/draft changes. Use checked-snapshot wording in discovery instead
+of implying current availability. A short response alone does not prove board
+completeness. Tests should cover disappearance from a complete board, first-100
+misses, outages/404s, alias identity, private access and unchanged saved history.
