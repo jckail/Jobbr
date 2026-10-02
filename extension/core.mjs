@@ -27,10 +27,44 @@ export function jobPayload(url, text) {
   return payload;
 }
 
-export async function apiRequest(base, path, { token = "", payload, fetcher = fetch } = {}) {
+export function aiSelection(config) {
+  if (!config || !["openai", "anthropic"].includes(config.ai_provider)
+    || typeof config.ai_model !== "string" || !config.ai_model.trim() || config.ai_model.length > 200
+    || typeof config.llm_enabled !== "boolean" || typeof config.auth_enabled !== "boolean") {
+    throw new Error("Could not verify extraction settings. Check Jobbr before saving.");
+  }
+  return {
+    "X-Jobbr-AI-Provider": config.ai_provider,
+    "X-Jobbr-AI-Model": config.ai_model,
+    "X-Jobbr-AI-Enabled": String(config.llm_enabled),
+  };
+}
+
+export function aiDisclosure(config) {
+  aiSelection(config);
+  const provider = config.ai_provider === "anthropic" ? "Anthropic Claude" : "OpenAI";
+  return `Saving sends posting text to ${provider} (${config.ai_model}) for extraction and may incur API charges. If you send only a URL, Jobbr fetches its posting text first. Dollar cost is not estimated. Your resume is not included. Continue?`;
+}
+
+export async function savePosting(base, { token = "", payload, fetcher = fetch, confirmAI } = {}) {
+  const config = await apiRequest(base, "/config", { fetcher });
+  const selection = aiSelection(config);
+  if (config.auth_enabled) throw new Error("This instance uses browser sign-in. Open Jobbr, sign in, and paste the posting in the app; extension sign-in is not yet supported.");
+  if (config.llm_enabled) {
+    if (typeof confirmAI !== "function") throw new Error("Review and confirm the AI extraction disclosure before saving.");
+    if (await confirmAI(aiDisclosure(config)) !== true) return null;
+  }
+  return apiRequest(base, "/jobs", { token, payload, fetcher, selection });
+}
+
+export async function apiRequest(base, path, { token = "", payload, fetcher = fetch, selection } = {}) {
   if (!Object.values(DESTINATIONS).includes(base)) throw new Error("Unsupported Jobbr destination.");
   if (!["/config", "/jobs"].includes(path)) throw new Error("Unsupported Jobbr request.");
   const headers = { Accept: "application/json" };
+  if (payload) {
+    if (path !== "/jobs" || !selection) throw new Error("Verify extraction settings before saving.");
+    Object.assign(headers, selection);
+  }
   if (payload) headers["Content-Type"] = "application/json";
   if (token) headers["X-Jobbr-Token"] = token;
   const response = await fetcher(base + "/api" + path, {

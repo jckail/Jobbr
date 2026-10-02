@@ -8,7 +8,7 @@ The `extension/` directory contains the Manifest V3 Jobbr extension. It captures
 2. Choose **Load unpacked** and select this repository’s `extension/` directory (not `mini_extension/`).
 3. Pin Jobbr from Chrome’s extensions menu, open a job posting, and click its icon.
 4. Select **Local** (`http://localhost:8000/jobbr`) or **Production** (`https://jckail.com/jobbr`). Start the local backend before using Local.
-5. Click **Capture current tab**. Review the URL and editable posting text; remove unrelated or personal information. Then click **Save to Jobbr** and keep the popup open until the result appears.
+5. Click **Capture current tab**. Review the URL and editable posting text; remove unrelated or personal information. Then click **Save to Jobbr**. When AI extraction is enabled, confirm the disclosed provider, model, posting-text transfer and possible API charges. Canceling sends no posting. Keep the popup open until the result appears.
 
 The extension requires no build step. Reload it on `chrome://extensions` after editing files. The legacy `mini_extension/` remains preserved and is not used by this extension.
 
@@ -18,7 +18,8 @@ The extension requires no build step. Reload it on `chrome://extensions` after e
 - `storage` persists only your destination selection in local storage. API tokens stay in `chrome.storage.session`, restricted to trusted extension contexts and cleared on browser restart, extension reload/update, or **Forget token**. Tokens are separate for Local and Production; this extension never reads the app’s storage or exports a token to page scripts.
 - Host permissions cover only `http://localhost:8000/*` and `https://jckail.com/*`. Chrome host patterns cannot restrict a port, but the request implementation and Content Security Policy restrict the local destination to port 8000. The app URLs are fixed constants and cannot be replaced with arbitrary destinations. Requests reject redirects and omit browser cookies.
 - Captured previews stay in the popup’s memory until you save. Closing it discards the preview. The preview contains only the top page’s URL and rendered `document.body.innerText`, at most 60,000 characters. It does not read cookies, network traffic, iframe contents, HTML source, or input values deliberately.
-- URL fragments are removed; query parameters remain visible for review. Do not send URLs or posting text containing access tokens, private messages, applicant data, or other material you do not want stored by the selected Jobbr instance. Jobbr’s configured extractor may send posting text to its configured LLM provider.
+- URL fragments are removed; query parameters remain visible for review. Do not send URLs or posting text containing access tokens, private messages, applicant data, or other material you do not want stored by the selected Jobbr instance. When AI is enabled, confirmation names the configured provider and model, explains possible API charges (without a dollar estimate), and states that your resume is excluded. A URL-only save can still send the server-fetched posting text to that provider.
+- Every save pins the exact provider, model and enabled state read from the server, including when AI is disabled. If settings change before saving, the server rejects the request with a visible error; the extension does not retry automatically. Choose Save again to check and review the new settings.
 
 ## Authentication
 

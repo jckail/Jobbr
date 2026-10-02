@@ -1,4 +1,4 @@
-import { apiRequest, destination, jobPayload, MAX_TEXT_LENGTH, postingUrl } from "./core.mjs";
+import { savePosting, destination, jobPayload, MAX_TEXT_LENGTH, postingUrl } from "./core.mjs";
 
 const el = Object.fromEntries(["destination", "open-app", "capture", "preview", "url", "text", "count", "save", "token", "forget", "status"].map(id => [id, document.getElementById(id)]));
 let busy = false;
@@ -64,10 +64,13 @@ el.preview.addEventListener("submit", async event => {
     const payload = jobPayload(el.url.value, el.text.value);
     const token = el.token.value.trim();
     await chrome.storage.session.set({ [tokenKey()]: token });
-    const config = await apiRequest(base, "/config");
-    if (config.auth_enabled) throw new Error("This instance uses browser sign-in. Open Jobbr, sign in, and paste the posting in the app; extension sign-in is not yet supported.");
-    status("Saving to Jobbr… Keep this popup open until it finishes.");
-    const job = await apiRequest(base, "/jobs", { token, payload });
+    status("Checking extraction settings… Keep this popup open until it finishes.");
+    const job = await savePosting(base, { token, payload, confirmAI: message => {
+      const accepted = window.confirm(message);
+      if (accepted) status("Saving to Jobbr… Keep this popup open until it finishes.");
+      return accepted;
+    } });
+    if (!job) { status("Save canceled. No posting was sent."); return; }
     status(`Saved: ${job.title || "Job posting"}${job.company?.name ? ` at ${job.company.name}` : ""}. Open Jobbr to review it.`);
   } catch (e) {
     status(e.name === "TimeoutError" || e.name === "TypeError" ? "Could not confirm the save. Check Jobbr before retrying; it may have completed. Check the selected destination and connection." : e.message, true);

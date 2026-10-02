@@ -12,6 +12,7 @@
       <label for="url">Posting URL</label><input id="url" type="url" required autocomplete="off">
       <label for="text">Posting text <span id="count"></span></label><textarea id="text" rows="8" maxlength="60000" spellcheck="false"></textarea>
       <p class="hint">Review and remove personal information. Clear the text to send only the URL; Jobbr will fetch that page.</p>
+      <p class="hint">Save checks the latest extraction settings. If AI is enabled, review and confirm the provider, model, and possible API charges before posting text is sent. Your resume is not included.</p>
       <button id="save" type="submit">Save to Jobbr</button>
     </form>
     <details><summary>API token</summary><p class="hint">Only needed when this instance requires a token. Kept for this browser session, separately for each destination. Instances using browser sign-in currently require saving inside the Jobbr app.</p><label for="token">Token</label><input id="token" type="password" autocomplete="off" maxlength="1024"><button id="forget" type="button" class="secondary">Forget token</button></details>
