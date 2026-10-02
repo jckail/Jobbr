@@ -11,6 +11,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from jobbr import config
 from jobbr.auth import ISSUER, SESSION_COOKIE, SessionRecord
+from jobbr.auth_store import DatabaseAuthStore
 from jobbr.main import create_app
 from jobbr.resume import MAX_FILE_BYTES, ResumeError, parse_isolated, router, safe_filename
 
@@ -170,30 +171,36 @@ def test_oidc_preview_requires_session_origin_and_csrf(env):
     env.setenv("JOBBR_OPENAI_ALLOWED_SUBJECT", "owner")
     env.setenv("JOBBR_OPENAI_REDIRECT_URI", "https://jobbr.example/jobbr/auth/openai/callback")
     env.setenv("JOBBR_OPENAI_STORE_KEY", Fernet.generate_key().decode())
+    env.setenv("JOBBR_OPENAI_TOKEN_AUTH_METHOD", "none")
+    env.delenv("JOBBR_OPENAI_CLIENT_SECRET", raising=False)
     app = create_app()
     service = app.state.auth
     with TestClient(app, base_url="https://jobbr.example") as client:
-        # Sessions live in the persistent auth store; the CSRF token is derived from the cookie.
-        cookie = secrets.token_urlsafe(32)
-        csrf = service.store.csrf(cookie)
+        # Lifespan runs the real migrations before the shared store is populated.
+        assert isinstance(service.store, DatabaseAuthStore)
+        assert service.problem() is None
+        assert client.post(PATH, files={"file": ("r.pdf", pdf_bytes())}).status_code == 401
+        session_id = secrets.token_urlsafe(32)
+        csrf_token = service.store.csrf(session_id)
         service.store.rotate_session(
             "",
-            cookie,
+            session_id,
             SessionRecord(
                 issuer=ISSUER,
                 client_id="oaiapp_resume_test",
                 subject="owner",
                 name=None,
                 email=None,
-                csrf_token=csrf,
+                csrf_token=csrf_token,
                 expires_at=time.time() + 300,
             ),
             service.scope,
         )
-        assert client.post(PATH, files={"file": ("r.pdf", pdf_bytes())}).status_code == 401
-        client.cookies.set(SESSION_COOKIE, cookie)
+        client.cookies.set(SESSION_COOKIE, session_id, domain="jobbr.example", path="/")
+        before = client.get("/jobbr/api/profile")
+        assert before.status_code == 200
         assert client.post(PATH, files={"file": ("r.pdf", pdf_bytes())}).status_code == 403
-        headers = {"Origin": "https://jobbr.example", "X-CSRF-Token": csrf}
+        headers = {"Origin": "https://jobbr.example", "X-CSRF-Token": csrf_token}
         assert (
             client.post(
                 PATH,
@@ -206,6 +213,8 @@ def test_oidc_preview_requires_session_origin_and_csrf(env):
             client.post(PATH, files={"file": ("r.pdf", pdf_bytes())}, headers=headers).status_code
             == 200
         )
+
+        assert client.get("/jobbr/api/profile").json() == before.json()
 
 
 def test_isolated_parser_timeout_kills_worker(monkeypatch):
