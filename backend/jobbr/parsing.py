@@ -80,6 +80,7 @@ def _annual_pay(value: Any, multiplier: int) -> int | None:
 def _jsonld_posting(d: dict[str, Any]) -> JobExtraction:
     org = d.get("hiringOrganization") or {}
     company = org.get("name") if isinstance(org, dict) else str(org)
+    # Reject non-text metadata before BeautifulSoup; parser errors differ by Python version.
     desc_html = d.get("description")
     if desc_html is None:
         desc_html = ""
