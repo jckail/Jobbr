@@ -114,7 +114,7 @@ def fetch_board_json(endpoint: str) -> str:
         raise DiscoveryError("Unsupported discovery endpoint.")
     deadline = time.monotonic() + get_settings().fetch_timeout_s
     try:
-        parsed, address = safefetch._resolve_url(endpoint)
+        parsed, address = safefetch._resolve_url(endpoint, deadline)
         with (
             httpx.Client(
                 transport=safefetch._PinnedTransport(parsed, address, deadline),

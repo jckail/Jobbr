@@ -1,7 +1,6 @@
 """Public-page fetching with DNS pinning, socket deadlines and bounded streaming."""
 
 import ipaddress
-import socket
 import ssl
 import time
 from collections.abc import Iterable, Iterator
@@ -12,6 +11,7 @@ import httpcore
 import httpx
 
 from .config import get_settings
+from .resolver import ResolutionError, resolve_addresses
 
 UA = "Mozilla/5.0 (compatible; JobbrBot/2.0; +https://jckail.com/jobbr)"
 MAX_BYTES = 3_000_000
@@ -30,7 +30,7 @@ def _remaining(deadline: float, timeout: float | None = None) -> float:
     return min(left, timeout) if timeout is not None else left
 
 
-def _resolve_url(value: str) -> tuple[httpx.URL, str]:
+def _resolve_url(value: str, deadline: float) -> tuple[httpx.URL, str]:
     if len(value) > MAX_URL_CHARS or any(ord(char) < 33 for char in value):
         raise FetchError("Invalid page URL.")
     try:
@@ -47,8 +47,11 @@ def _resolve_url(value: str) -> tuple[httpx.URL, str]:
         host = url.raw_host.decode("ascii")
         if "%" in host:
             raise FetchError("Scoped addresses are not supported.")
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-        addresses = [ipaddress.ip_address(info[4][0]) for info in infos]
+        addresses = [
+            ipaddress.ip_address(address) for address in resolve_addresses(host, port, deadline)
+        ]
+    except ResolutionError as exc:
+        raise FetchError(str(exc)) from exc
     except (ValueError, UnicodeError, httpx.InvalidURL, OSError) as exc:
         raise FetchError("Invalid or unresolvable page URL.") from exc
     if not addresses:
@@ -61,7 +64,7 @@ def _resolve_url(value: str) -> tuple[httpx.URL, str]:
 
 
 def assert_public_url(url: str) -> None:
-    _resolve_url(url)
+    _resolve_url(url, time.monotonic() + get_settings().fetch_timeout_s)
 
 
 class _DeadlineStream(httpcore.NetworkStream):
@@ -208,7 +211,7 @@ def fetch_html(url: str) -> tuple[str, str]:
     current = url
     try:
         for _ in range(MAX_REDIRECTS + 1):
-            parsed, address = _resolve_url(current)
+            parsed, address = _resolve_url(current, deadline)
             current = str(parsed)
             with (
                 httpx.Client(

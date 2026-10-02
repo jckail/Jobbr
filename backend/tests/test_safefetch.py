@@ -1,6 +1,5 @@
 """Exercise real HTTPX/httpcore parsing over mocked network streams, never the network."""
 
-import socket
 import ssl
 import time
 
@@ -21,7 +20,7 @@ def public_env(monkeypatch):
 
 
 def answer(address=PUBLIC):
-    return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 443))]
+    return [address]
 
 
 class RecordingStream(httpcore.MockStream):
@@ -46,7 +45,7 @@ def install_network(monkeypatch, responses, dns=None):
     calls = []
     streams = []
     remaining = iter(responses)
-    monkeypatch.setattr(socket, "getaddrinfo", dns or (lambda *args, **kwargs: answer()))
+    monkeypatch.setattr(safefetch, "resolve_addresses", dns or (lambda *args, **kwargs: answer()))
 
     def connect(self, host, port, **kwargs):
         calls.append(("connect", host, port, kwargs))
@@ -72,7 +71,7 @@ def http_response(body=b"hello", extra=b""):
 def test_dns_rebinding_is_pinned_tls_and_host_preserved(public_env, monkeypatch):
     dns_calls = []
 
-    def dns(host, port, **kwargs):
+    def dns(host, port, deadline):
         dns_calls.append(host)
         return answer(PUBLIC if len(dns_calls) == 1 else "127.0.0.1")
 
@@ -93,7 +92,7 @@ def test_dns_rebinding_is_pinned_tls_and_host_preserved(public_env, monkeypatch)
 
 
 def test_private_redirect_never_connected(public_env, monkeypatch):
-    def dns(host, port, **kwargs):
+    def dns(host, port, deadline):
         return answer("127.0.0.1" if host == "internal.example" else PUBLIC)
 
     calls, streams = install_network(
@@ -131,7 +130,7 @@ def test_invalid_urls_do_not_resolve(public_env, monkeypatch, value):
     def dns(*args, **kwargs):
         pytest.fail("Invalid URL reached DNS")
 
-    monkeypatch.setattr(socket, "getaddrinfo", dns)
+    monkeypatch.setattr(safefetch, "resolve_addresses", dns)
     with pytest.raises(safefetch.FetchError):
         safefetch.fetch_html(value)
 
@@ -139,7 +138,7 @@ def test_invalid_urls_do_not_resolve(public_env, monkeypatch, value):
 def test_unicode_host_is_idna_and_keeps_identity(public_env, monkeypatch):
     hosts = []
 
-    def dns(host, port, **kwargs):
+    def dns(host, port, deadline):
         hosts.append(host)
         return answer()
 
@@ -150,7 +149,9 @@ def test_unicode_host_is_idna_and_keeps_identity(public_env, monkeypatch):
 
 
 def test_mixed_dns_answers_rejected(public_env, monkeypatch):
-    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: answer() + answer("10.0.0.1"))
+    monkeypatch.setattr(
+        safefetch, "resolve_addresses", lambda *a, **k: answer() + answer("10.0.0.1")
+    )
     with pytest.raises(safefetch.FetchError, match="publicly routable"):
         safefetch.fetch_html("https://jobs.example")
 
@@ -192,7 +193,7 @@ def test_proxy_environment_is_ignored(public_env, monkeypatch):
 
 
 def test_network_error_is_sanitized(public_env, monkeypatch):
-    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: answer())
+    monkeypatch.setattr(safefetch, "resolve_addresses", lambda *a, **k: answer())
 
     def connect(*args, **kwargs):
         raise httpcore.ConnectError("private-secret upstream exception")

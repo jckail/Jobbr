@@ -1,10 +1,9 @@
 import json
-import socket
 
 import pytest
 from pydantic import ValidationError
 
-from jobbr import parsing
+from jobbr import parsing, safefetch
 from jobbr.models import ExtractMethod
 from jobbr.schemas import JobCreate, JobExtraction, JobPatch, ProfileIn
 from tests.conftest import API
@@ -70,7 +69,7 @@ def test_pasted_public_url_does_not_resolve_dns(client, monkeypatch):
     def fail_dns(*args, **kwargs):
         pytest.fail("Pasted postings must not resolve DNS")
 
-    monkeypatch.setattr(socket, "getaddrinfo", fail_dns)
+    monkeypatch.setattr(safefetch, "resolve_addresses", fail_dns)
     response = client.post(
         f"{API}/jobs",
         json={"text": "Engineer Python", "url": "https://example.invalid/job", "company": "Acme"},

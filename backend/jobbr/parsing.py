@@ -80,7 +80,11 @@ def _annual_pay(value: Any, multiplier: int) -> int | None:
 def _jsonld_posting(d: dict[str, Any]) -> JobExtraction:
     org = d.get("hiringOrganization") or {}
     company = org.get("name") if isinstance(org, dict) else str(org)
-    desc_html = d.get("description") or ""
+    desc_html = d.get("description")
+    if desc_html is None:
+        desc_html = ""
+    elif not isinstance(desc_html, str):
+        raise TypeError("Invalid posting description")
     desc_text = BeautifulSoup(desc_html, "lxml").get_text(" ", strip=True)
     locs: list[str] = []
     jl = d.get("jobLocation") or []

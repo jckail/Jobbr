@@ -171,7 +171,7 @@ def test_arbitrary_endpoints_rejected(endpoint):
 def test_fetch_reuses_guards_and_rejects_redirect(monkeypatch):
     calls = []
 
-    def resolve(endpoint):
+    def resolve(endpoint, deadline):
         calls.append(endpoint)
         return httpx.URL(endpoint), "93.184.216.34"
 
@@ -193,7 +193,7 @@ def test_fetch_reuses_guards_and_rejects_redirect(monkeypatch):
 
 
 def test_network_error_explicit_sanitized(monkeypatch):
-    def fail(endpoint):
+    def fail(endpoint, deadline):
         raise httpcore.ConnectError("upstream secret")
 
     monkeypatch.setattr(discovery.safefetch, "_resolve_url", fail)

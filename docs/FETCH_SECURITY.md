@@ -31,10 +31,16 @@ the identity request. At most five redirects are followed, six requests total.
 
 One monotonic deadline covers the redirect sequence and socket connection, TLS,
 write and read operations. Each socket timeout is capped to the remaining budget;
-slowly arriving chunks do not reset the budget. Blocking system DNS resolution
-cannot be cancelled safely in the synchronous worker: a stuck OS resolver can
-exceed the configured timeout before the request is rejected. Deployment DNS
-settings and outbound network policy remain useful controls for that limitation.
+slowly arriving chunks do not reset the budget. DNS lookup and waiting for a DNS
+worker slot use the same deadline. Each nonliteral hostname is resolved in a
+fresh isolated Python subprocess with a minimal environment, no shell, and no
+application imports. At most four resolver workers run per backend process.
+Timeout kills and reaps the child; workers also have POSIX CPU, memory, core-dump
+and file-write limits. IPv4/IPv6 literals skip DNS. Results are bounded to 128
+unique validated IP addresses; excess or malformed answer sets are rejected,
+never truncated. The whole returned set still passes the public-address guard.
+Subprocess startup consumes the fetch budget and adds latency per redirect.
+Deployment DNS settings and outbound network policy remain useful controls.
 The code guarantees bounded accumulated body memory, not a hard CPU bound against
 all possible HTTP parser inputs. It relies on HTTPX/httpcore's parser limits for
 response headers.
