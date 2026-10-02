@@ -314,3 +314,16 @@ image-input job; a new isolated-input regression passes. The mandatory full
 gate remains pending; no new source push or
 workflow dispatch is claimed. Other-owner manifest/bootstrap helpers remain
 untouched.
+
+## Combined gate and saved-role type correction
+
+The combined gate at `8e6ff0e` passed 558 backend tests with PostgreSQL
+(one intentional skip), backend lint/format/strict types, locked dependency
+verification and all 12 offline release methods. Web lint passed; TypeScript
+caught a possibly undefined unique saved-job ID. The lookup now explicitly
+checks that ID before linking; focused TypeScript and component ESLint pass.
+The corrected full gate, extension step, Docker and rendered UI acceptance
+remain required. No push or deployment occurred from this failed gate.
+AgentMon is now available; root registered its native identity and retained
+sole Jobbr verification ownership. Historical availability gaps above remain
+observations from their respective checkpoints.

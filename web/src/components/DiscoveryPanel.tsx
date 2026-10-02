@@ -38,7 +38,8 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
           job.external_identity.posting_id === posting.source_id
         )).map((job) => job.id));
         // Ambiguous legacy rows need review; never select an arbitrary saved job.
-        if (matches.size === 1) linked[posting.url] = [...matches][0];
+        const [savedId] = matches;
+        if (matches.size === 1 && savedId !== undefined) linked[posting.url] = savedId;
         else if (matches.size > 1) ambiguous[posting.url] = true;
       }
       setSaved(linked);
