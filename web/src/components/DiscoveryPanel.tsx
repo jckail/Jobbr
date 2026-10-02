@@ -68,7 +68,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
 
   return (
     <details className="card discovery-panel">
-      <summary><span>Check a career board</span><span className="muted">Review a company’s posting snapshot</span></summary>
+      <summary><span className="discovery-summary-copy"><span>Check a career board</span><span className="muted">Review a company’s posting snapshot</span></span></summary>
       <p className="muted">Check Greenhouse or Lever for a snapshot of published postings, review the source, then choose what to save. Availability can change after the check. Nothing is imported automatically.</p>
       {config.loading ? <p role="status">Checking extraction settings…</p> : config.error ? <div><p role="alert">{errorMessage(config.error)}</p><button className="btn" onClick={config.reload}>Retry extraction settings</button></div> : config.data && <p className="muted">{config.data.llm_enabled ? `Saving may send posting text to ${config.data.ai_provider_label} (${config.data.ai_model}) for extraction and incur API charges. Dollar cost is not estimated. Your resume is not included.` : "Saving uses structured posting data and offline heuristics. AI extraction is unavailable for the selected server provider."}</p>}
       <form onSubmit={search} className="stack">
@@ -79,11 +79,11 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
             </select>
           </label>
           <label className="field">Board name
-            <input value={board} required maxLength={80} pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,79}" autoComplete="off" disabled={searching || saving !== null}
+            <input type="text" value={board} required maxLength={80} pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,79}" autoComplete="off" disabled={searching || saving !== null}
               placeholder="Company’s board token, e.g. acme" onChange={(event) => { setBoard(event.target.value); setCompany(""); setError(""); setSnapshot(null); }} />
           </label>
           <label className="field">Hiring company name
-            <input value={company} maxLength={200} disabled={searching || saving !== null} placeholder="Required when the board omits it" onChange={(event) => setCompany(event.target.value)} />
+            <input type="text" value={company} maxLength={200} disabled={searching || saving !== null} placeholder="Required when the board omits it" onChange={(event) => setCompany(event.target.value)} />
           </label>
           <label className="field">Role, skill or keyword
             <input type="search" value={query} maxLength={200} disabled={searching || saving !== null} placeholder="Data engineer, Python…" onChange={(event) => setQuery(event.target.value)} />
