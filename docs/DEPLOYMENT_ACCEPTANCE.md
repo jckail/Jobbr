@@ -45,9 +45,10 @@ behavior described in [AI.md](AI.md). Do not expose any provider credential to
 the web bundle or extension.
 
 Keep one replica and one Uvicorn worker. The template's `Recreate` strategy avoids
-overlapping SQLite writers during rollout and causes a brief outage. PostgreSQL
-alone does not permit OIDC scale-out: sessions and login transactions are currently
-in process memory. Restarts invalidate sessions. Confirm the PVC's actual storage
+overlapping SQLite writers during rollout and causes a brief outage. PostgreSQL-backed shared login/session storage is implemented; all active instances
+must share the same database, auth configuration and stable `JOBBR_OPENAI_STORE_KEY`.
+Verify shared revocation, one-time callbacks and startup migration serialization
+on the selected database before scaling. SQLite remains limited to one instance. Confirm the PVC's actual storage
 class, persistence/reclaim policy, volume permissions for UID/fsGroup 10001 and
 restore procedure. Take and verify a backup before replacing an existing database;
 see [BACKUP.md](BACKUP.md). Startup performs migrations and rejects incompatible

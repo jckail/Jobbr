@@ -71,6 +71,7 @@ export interface AuthSession {
 export type CareerKind = "cover_letter" | "interview_prep";
 export interface CareerResult {
   kind: CareerKind;
+  generated_at?: string;
   model: string;
   input_tokens: number;
   output_tokens: number;
@@ -84,6 +85,13 @@ export interface CareerResult {
     evidence_quotes: string[];
     review_notes: string[];
   };
+}
+export interface SavedCareerDraft {
+  id: number;
+  job_id: number;
+  created_at: string;
+  source_fingerprint: string;
+  result: CareerResult;
 }
 export interface ResumePreview { text: string; page_count: number; filename: string }
 

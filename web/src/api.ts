@@ -1,4 +1,4 @@
-import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ResumePreview, Stage, Stats } from "./types";
+import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ResumePreview, SavedCareerDraft, Stage, Stats } from "./types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const TOKEN_KEY = "jobbr.token";
@@ -60,6 +60,11 @@ export const api = {
   logout: async () => { await req<void>("/auth/logout", { method: "POST" }); clearSession(); },
   career: (id: number, kind: CareerKind, signal?: AbortSignal) =>
     req<CareerResult>(`/jobs/${id}/career/${kind}`, { method: "POST", signal }),
+  careerDrafts: (id: number) => req<SavedCareerDraft[]>(`/jobs/${id}/career/drafts`),
+  saveCareerDraft: (id: number, result: CareerResult) =>
+    req<SavedCareerDraft>(`/jobs/${id}/career/drafts`, body("POST", { result })),
+  deleteCareerDraft: (id: number, draftId: number) =>
+    req<void>(`/jobs/${id}/career/drafts/${draftId}`, { method: "DELETE" }),
   previewResume: (file: File) => {
     const form = new FormData();
     form.append("file", file);

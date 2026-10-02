@@ -159,6 +159,15 @@ class ApplicationEvent(SQLModel, table=True):
     at: NaiveDatetime = Field(default_factory=utcnow)
 
 
+class SavedCareerDraft(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    job_id: int = Field(foreign_key="job.id", index=True)
+    profile_id: int = Field(foreign_key="profile.id", index=True)
+    result: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    source_fingerprint: str
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
 def pk(row: Company | Job | Application | Profile) -> int:
     """Primary key of a persisted row (narrows Optional[int] for type checkers)."""
     if row.id is None:

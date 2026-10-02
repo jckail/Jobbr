@@ -5,10 +5,14 @@ import sys
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
-from jobbr import db
+from jobbr import config, db
 from jobbr.main import create_app
+from migrations.baseline import metadata as initial_schema
 from tests.conftest import API, reset_settings
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "backup.py"
@@ -23,6 +27,13 @@ def source_path() -> Path:
     database = db.get_engine().url.database
     assert database is not None
     return Path(database)
+
+
+def test_backup_rejects_missing_initialization_guard(client):
+    with db.get_engine().begin() as connection:
+        connection.execute(text("DELETE FROM authstoreguard"))
+    with pytest.raises(backup.BackupError, match="initialization guard"):
+        backup.verify(source_path())
 
 
 def test_backup_restore_preserves_complete_pipeline_and_wal(
@@ -41,6 +52,29 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
         f"{API}/jobs/{job_id}/application", json={"stage": "applied", "notes": "Preserve notes"}
     )
     assert application.status_code == 200, application.text
+    env.setenv("JOBBR_API_TOKEN", "backup-draft-token")
+    config.get_settings.cache_clear()
+    client.headers["X-Jobbr-Token"] = "backup-draft-token"
+    draft_response = client.post(
+        f"{API}/jobs/{job_id}/career/drafts",
+        json={
+            "result": {
+                "kind": "cover_letter",
+                "model": "test-model",
+                "draft": {
+                    "cover_letter": "I build Python pipelines.",
+                    "interview_questions": [],
+                    "strengths": ["Python"],
+                    "gaps": [],
+                    "questions_to_ask": [],
+                    "evidence_quotes": ["Python"],
+                    "review_notes": ["Review before use."],
+                },
+            }
+        },
+    )
+    assert draft_response.status_code == 201, draft_response.text
+    original_drafts = client.get(f"{API}/jobs/{job_id}/career/drafts").json()
     original_detail = client.get(f"{API}/jobs/{job_id}").json()
     source = source_path()
     assert Path(str(source) + "-wal").exists()
@@ -54,6 +88,8 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
     env.setenv("JOBBR_DATABASE_URL", f"sqlite:///{restored}")
     reset_settings()
     with TestClient(create_app()) as restored_client:
+        restored_client.headers["X-Jobbr-Token"] = "backup-draft-token"
+        assert restored_client.get(f"{API}/jobs/{job_id}/career/drafts").json() == original_drafts
         assert restored_client.get(f"{API}/profile").json() == profile.json()
         assert restored_client.get(f"{API}/jobs/{job_id}").json() == original_detail
         assert restored_client.get(f"{API}/stats").json()["totals"]["jobs"] == 1
@@ -67,6 +103,10 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
             "applicationevent",
             "match",
             "extraction",
+            "savedcareerdraft",
+            "authtransaction",
+            "authsession",
+            "authstoreguard",
             "alembic_version",
         ):
             assert original.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall() == (
@@ -182,3 +222,41 @@ def test_publication_race_does_not_replace_concurrent_output(
         backup.snapshot(source_path(), output)
     assert output.read_text() == "Created by another process"
     assert list(tmp_path.glob(".jobbr-snapshot-*")) == []
+
+
+@pytest.mark.parametrize("revision", ["0001_v2", "0002_saved_drafts"])
+def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, revision):
+    configuration = Config()
+    configuration.set_main_option(
+        "script_location", str(Path(__file__).resolve().parents[1] / "migrations")
+    )
+    with db.get_engine().begin() as connection:
+        configuration.attributes["connection"] = connection
+        command.upgrade(configuration, revision)
+        connection.execute(
+            text(
+                "INSERT INTO company (name, created_at) VALUES ('Historical company', '2026-01-01')"
+            )
+        )
+    source = source_path()
+    snapshot = tmp_path / "historical-snapshot.db"
+    restored = tmp_path / "historical-restored.db"
+    backup.snapshot(source, snapshot)
+    backup.verify(snapshot)
+    backup.snapshot(snapshot, restored)
+    with sqlite3.connect(snapshot) as original, sqlite3.connect(restored) as copy:
+        assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)
+        for table in initial_schema.tables:
+            assert original.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall() == (
+                copy.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall()
+            )
+    env.setenv("JOBBR_DATABASE_URL", f"sqlite:///{restored}")
+    reset_settings()
+    db.init_db()
+    backup.verify(restored)
+    with sqlite3.connect(restored) as copy, sqlite3.connect(snapshot) as archive:
+        assert copy.execute("SELECT name FROM company").fetchone() == ("Historical company",)
+        assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0003_auth_store",
+        )
+        assert archive.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)

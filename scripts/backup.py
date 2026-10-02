@@ -26,8 +26,10 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402
 
-from jobbr import models  # noqa: E402, F401
+from jobbr import auth_models, models  # noqa: E402, F401
 from jobbr.schema import SchemaMismatchError, verify_schema  # noqa: E402
+from migrations.baseline import metadata as initial_schema  # noqa: E402
+from migrations.drafts_baseline import metadata as drafts_schema  # noqa: E402
 
 BACKUP_TIMEOUT_SECONDS = 60
 
@@ -58,13 +60,25 @@ def verify(path: Path) -> None:
         revisions = {
             row[0] for row in connection.execute("SELECT version_num FROM alembic_version")
         }
-        if revisions != heads:
-            raise BackupError("Database revision does not match this backend's migration head.")
+        historical_schemas = {
+            "0001_v2": initial_schema,
+            "0002_saved_drafts": drafts_schema,
+        }
+        if revisions == heads:
+            expected = SQLModel.metadata
+        elif len(revisions) == 1 and next(iter(revisions)) in historical_schemas:
+            expected = historical_schemas[next(iter(revisions))]
+        else:
+            raise BackupError("Database revision is not supported by this backend.")
+        if "authstoreguard" in expected.tables and connection.execute(
+            "SELECT id FROM authstoreguard"
+        ).fetchall() != [(1,)]:
+            raise BackupError("Database initialization guard validation failed.")
         # Reuse the same read-only connection; never call application startup/init_db here.
         engine = create_engine("sqlite://", creator=lambda: connection)
         try:
             with engine.connect() as sqlalchemy_connection:
-                verify_schema(sqlalchemy_connection, SQLModel.metadata)
+                verify_schema(sqlalchemy_connection, expected)
         except (SchemaMismatchError, SQLAlchemyError) as error:
             raise BackupError("Database schema validation failed.") from error
         finally:

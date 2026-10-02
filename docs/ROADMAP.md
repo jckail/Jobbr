@@ -15,10 +15,10 @@ Target: a private job-search workspace at https://jckail.com/jobbr, with an exce
 ## Required remaining work
 
 1. Finish browser acceptance of the implemented Superdesign across overview, searchable jobs, role detail, pipeline, profile and onboarding: desktop/mobile, keyboard, loading, empty, unauthorized and failure states.
-2. Cookie authentication and consent-based career UI are implemented. Verify real provider login and paid generation, then add useful draft persistence; unknown spend is no longer shown as free.
+2. Cookie authentication and consent-based career UI are implemented. Verify real provider login and paid generation, then verify explicit private saved-draft persistence; unknown spend is no longer shown as free.
 3. Bounded PDF resume preview/import is implemented and tested, including malformed/scanned files and privacy. Add versioned resume/profile handling and useful resume tailoring.
 4. Greenhouse/Lever discovery with checked source provenance and explicit saving is implemented; reminders are wired. Improve freshness/deduplication and richer search. Headless fetching needs a verified SSRF-safe browser strategy; extension capture already handles rendered text without backend browser access.
-5. Add persistent user ownership and authenticated per-query authorization if expanding beyond the single-owner instance; shared session storage before multiple workers/replicas. Current configured owner restriction must remain until this is verified.
+5. Add persistent user ownership and authenticated per-query authorization if expanding beyond the single-owner instance; shared encrypted transaction/session storage is implemented; verify PostgreSQL concurrency and stable-key configuration before multiple workers/replicas. Current configured owner restriction must remain until this is verified.
 6. Verify real ChatGPT client registration/callback and live SDK behavior using authorized server credentials; no ChatGPT-plan billing inferred from identity sign-in.
 7. Test extension in real Chrome and design a supported extension authentication flow for OIDC; current token-only capture deliberately declines OIDC mode.
 8. Verify live PostgreSQL migrations/CRUD, backup/restore and upgrades; improve concurrency/adoption for multi-pod startup when scaling.

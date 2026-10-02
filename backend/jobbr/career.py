@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from typing import Literal, TypeVar
 
 from agents import Agent, ModelSettings, OpenAIResponsesModel, RunConfig, Runner
@@ -50,6 +51,7 @@ class CareerResult(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     requires_review: bool = True
+    generated_at: datetime | None = None
 
 
 async def run_structured(
@@ -173,4 +175,5 @@ async def generate_career(
         draft=draft,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
+        generated_at=datetime.now(UTC),
     )

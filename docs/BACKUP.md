@@ -4,14 +4,15 @@
 Run it with the backend virtual environment's Python, or use `/app/backup.py` in
 the Docker image. It accepts explicit file paths and never prints database rows,
 API keys or connection URLs. Backups contain private resume text and application
-notes; keep a copy outside the Docker data volume.
+notes, saved career drafts, and encrypted/authentication state; keep a copy outside the Docker data volume.
 
 Both `backup` and `restore` use SQLite's backup API to capture committed data,
 including pages in the WAL. They validate SQLite integrity, foreign keys, the
-Alembic migration head and the current backend's complete schema before publishing
-a single-file database. They do not migrate the source. Unversioned, older,
-corrupt or mismatched databases are rejected; use their compatible backend for a
-recovery backup before upgrading them.
+Alembic revision and the exact schema for that supported revision before publishing
+a single-file database. They do not migrate the source. Unversioned, unknown-revision, corrupt or mismatched databases are rejected.
+Versioned v2 snapshots at `0001_v2` and `0002_saved_drafts` remain accepted against
+their frozen historical schemas. Restoring one copies it unchanged; application
+startup upgrades only the restored copy to the current migration head.
 
 The output directory must already exist. A private staging file with mode `0600`
 is published atomically without replacing existing paths. Existing files,
@@ -65,7 +66,7 @@ committed pages that still reside in `jobbr.db-wal`.
 
 ## Docker restore to a new database
 
-Use the same backend version that created the snapshot. For a snapshot already
+Use a backend that supports the snapshot revision. For a snapshot already
 in `/data/backups`, stop the API and restore alongside the current database:
 
 ```bash

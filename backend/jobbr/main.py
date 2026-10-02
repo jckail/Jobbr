@@ -63,7 +63,7 @@ def create_app() -> FastAPI:
         openapi_url=f"{base}/api/openapi.json",
         redoc_url=None,
     )
-    auth = AuthService(AuthSettings(), base=base)
+    auth = AuthService(AuthSettings(), base=base, engine=get_engine())
     app.state.auth = auth
     if st.private_instance and not (st.api_token or auth.settings.auth_enabled):
         raise RuntimeError("Private instances require an API token or configured OpenAI sign-in.")
@@ -89,6 +89,8 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, bool]:
+        if auth.settings.auth_enabled and auth.problem() is not None:
+            raise HTTPException(503, "Authentication storage is not ready.")
         return {"ok": True}
 
     # API lives under the mount path so an ingress can route /jobbr/* without rewriting.

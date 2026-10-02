@@ -17,7 +17,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: { name: jobbr, namespace: jobbr }
 spec:
-  replicas: 1          # SQLite and in-memory OIDC require one instance; Postgres alone does not permit scale-out.
+  replicas: 1          # SQLite requires one instance; shared PostgreSQL auth also requires the same stable store key.
   strategy: { type: Recreate }
   selector: { matchLabels: { app: jobbr } }
   template:

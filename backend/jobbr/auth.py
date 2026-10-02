@@ -1,13 +1,11 @@
-"""Identity-only OpenAI OIDC and bounded, single-process first-party sessions."""
+"""Identity-only OpenAI OIDC with durable shared first-party sessions."""
 
 import asyncio
 import base64
 import hashlib
 import json
 import secrets
-import threading
 import time
-from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import quote_plus, urlencode, urlsplit
 
@@ -15,7 +13,20 @@ import httpx
 import jwt
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy import Engine
+from starlette.concurrency import run_in_threadpool
+
+from .auth_store import (
+    AuthStore,
+    DatabaseAuthStore,
+    SessionRecord,
+    StoreFull,
+    StoreUnavailable,
+    Transaction,
+    digest,
+)
 
 ISSUER = "https://auth.openai.com"
 DISCOVERY = ISSUER + "/.well-known/openid-configuration"
@@ -37,6 +48,7 @@ class AuthSettings(BaseSettings):
     token_auth_method: Literal["none", "client_secret_basic"] = "none"  # noqa: S105 - OAuth method names are not passwords
     redirect_uri: str = ""
     allowed_subject: str = ""
+    store_key: str = Field(default="", repr=False)
 
     def problem(self, base: str) -> str | None:  # noqa: PLR0911
         if not self.auth_enabled:
@@ -45,7 +57,10 @@ class AuthSettings(BaseSettings):
             return "A registered website OAuth client ID is required."
         if not self.allowed_subject:
             return "An allowed OpenAI subject is required for this single-owner database."
-        uri = urlsplit(self.redirect_uri)
+        try:
+            uri = urlsplit(self.redirect_uri)
+        except ValueError:
+            return "An exact registered HTTPS callback URL matching the mount path is required."
         if (
             uri.scheme != "https"
             or not uri.hostname
@@ -68,34 +83,12 @@ class AuthSettings(BaseSettings):
         return f"{uri.scheme}://{uri.netloc}"
 
 
-@dataclass(frozen=True)
-class Transaction:
-    state: str
-    verifier: str
-    nonce: str
-    expires_at: float
-
-
-@dataclass(frozen=True)
-class SessionRecord:
-    issuer: str
-    client_id: str
-    subject: str
-    name: str | None
-    email: str | None
-    csrf_token: str
-    expires_at: float
-
-    def user(self) -> dict[str, str | None]:
-        return {"subject": self.subject, "name": self.name, "email": self.email}
-
-
 class AuthFailure(Exception):
     """A deliberately credential-free provider/validation error."""
 
 
 class AuthService:
-    """Use ONE process. Restart invalidates sessions; stores expire and have hard caps."""
+    """OIDC verification plus persistent transactions, sessions and shared revocation."""
 
     def __init__(
         self,
@@ -103,35 +96,70 @@ class AuthService:
         base: str = "",
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        engine: Engine | None = None,
+        store: AuthStore | None = None,
     ) -> None:
         self.settings = settings
         self.base = base
         self.transport = transport
-        self.transactions: dict[str, Transaction] = {}
-        self.sessions: dict[str, SessionRecord] = {}
-        self._lock = threading.Lock()
+        self.store = store
+        self._store_problem: str | None = None
+        if settings.auth_enabled and self.store is None:
+            if not settings.store_key:
+                self._store_problem = "A stable server-side auth store key is required."
+            elif engine is None:
+                self._store_problem = "A persistent auth database is required."
+            else:
+                try:
+                    self.store = DatabaseAuthStore(engine, settings.store_key)
+                except StoreUnavailable:
+                    self._store_problem = "The auth store key or database configuration is invalid."
+        configuration = json.dumps(
+            [ISSUER, settings.client_id, settings.redirect_uri, settings.allowed_subject],
+            separators=(",", ":"),
+        )
+        self.scope = self.store.scope(configuration) if self.store else ""
         self._metadata: dict[str, Any] | None = None
         self._metadata_until = 0.0
         self._keys: list[dict[str, Any]] = []
         self._keys_until = 0.0
         self._keys_last_fetch = 0.0
 
-    def prune(self) -> None:
-        """Caller holds lock when manipulating stores."""
-        now = time.time()
-        for store in (self.transactions, self.sessions):
-            for key in [key for key, value in store.items() if value.expires_at <= now]:
-                del store[key]
+    def problem(self) -> str | None:
+        problem = self.settings.problem(self.base)
+        if problem:
+            return problem
+        if self._store_problem:
+            return self._store_problem
+        if self.store is None:
+            return "A persistent auth database is required."
+        try:
+            self.store.check()
+        except StoreUnavailable:
+            return "The persistent auth store is temporarily unavailable."
+        return None
 
     def ensure_ready(self) -> None:
-        problem = self.settings.problem(self.base)
+        problem = self.problem()
         if problem:
             raise HTTPException(503, problem)
 
     def session(self, request: Request) -> SessionRecord | None:
-        with self._lock:
-            self.prune()
-            return self.sessions.get(request.cookies.get(SESSION_COOKIE, ""))
+        if self.store is None:
+            raise HTTPException(503, "The persistent auth store is unavailable.")
+        try:
+            record = self.store.get_session(request.cookies.get(SESSION_COOKIE, ""), self.scope)
+        except StoreUnavailable:
+            raise HTTPException(
+                503, "The persistent auth store is temporarily unavailable."
+            ) from None
+        if record and (
+            record.issuer != ISSUER
+            or record.client_id != self.settings.client_id
+            or not same_value(record.subject, self.settings.allowed_subject)
+        ):
+            return None
+        return record
 
     async def _json(
         self, client: httpx.AsyncClient, method: str, url: str, **kwargs: Any
@@ -191,7 +219,7 @@ class AuthService:
         )
 
     async def start(self, request: Request) -> RedirectResponse:
-        self.ensure_ready()
+        await run_in_threadpool(self.ensure_ready)
         try:
             async with asyncio.timeout(12), self.client() as client:
                 metadata = await self.metadata(client)
@@ -204,12 +232,20 @@ class AuthService:
             secrets.token_urlsafe(32),
             time.time() + 600,
         )
-        with self._lock:
-            self.prune()
-            self.transactions.pop(request.cookies.get(TRANSACTION_COOKIE, ""), None)
-            if len(self.transactions) >= 1024:
-                raise HTTPException(503, "Too many sign-in attempts; try again later.")
-            self.transactions[browser_id] = transaction
+        assert self.store is not None
+        try:
+            await run_in_threadpool(
+                self.store.create_transaction,
+                browser_id,
+                request.cookies.get(TRANSACTION_COOKIE, ""),
+                transaction,
+                self.scope,
+                self.settings.redirect_uri,
+            )
+        except (StoreUnavailable, StoreFull):
+            raise HTTPException(
+                503, "Sign-in storage is temporarily unavailable; try again later."
+            ) from None
         challenge = (
             base64.urlsafe_b64encode(hashlib.sha256(transaction.verifier.encode()).digest())
             .rstrip(b"=")
@@ -301,18 +337,23 @@ class AuthService:
             raise AuthFailure("Identity verification failed") from exc
 
     async def callback(self, request: Request) -> Response:
-        self.ensure_ready()
-        with self._lock:
-            self.prune()
-            tx = self.transactions.pop(request.cookies.get(TRANSACTION_COOKIE, ""), None)
         response: Response
         try:
+            await run_in_threadpool(self.ensure_ready)
+            assert self.store is not None
+            tx = await run_in_threadpool(
+                self.store.consume_transaction,
+                request.cookies.get(TRANSACTION_COOKIE, ""),
+                self.scope,
+                self.settings.redirect_uri,
+            )
             query = request.query_params
             state = query.get("state", "")
             if (
                 not tx
                 or len(query.getlist("state")) != 1
-                or not same_value(state, tx.state)
+                or len(state) != 43
+                or not same_value(digest(state), tx.state)
                 or "error" in query
                 or len(query.getlist("code")) != 1
                 or not query.get("code")
@@ -355,17 +396,18 @@ class AuthService:
                 ISSUER,
                 self.settings.client_id,
                 claims["sub"],
-                claims.get("name") if isinstance(claims.get("name"), str) else None,
-                claims.get("email") if isinstance(claims.get("email"), str) else None,
-                secrets.token_urlsafe(32),
+                claims["name"][:300] if isinstance(claims.get("name"), str) else None,
+                claims["email"][:320] if isinstance(claims.get("email"), str) else None,
+                self.store.csrf(session_id),
                 time.time() + 28800,
             )
-            with self._lock:
-                self.prune()
-                self.sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)
-                if len(self.sessions) >= 1024:
-                    raise AuthFailure("Session store full")  # noqa: TRY301
-                self.sessions[session_id] = record
+            await run_in_threadpool(
+                self.store.rotate_session,
+                request.cookies.get(SESSION_COOKIE, ""),
+                session_id,
+                record,
+                self.scope,
+            )
             response = RedirectResponse(self.base + "/", 303)
             response.set_cookie(
                 SESSION_COOKIE,
@@ -375,6 +417,13 @@ class AuthService:
                 httponly=True,
                 samesite="lax",
                 path="/",
+            )
+        except HTTPException as exc:
+            response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        except (StoreUnavailable, StoreFull):
+            response = JSONResponse(
+                {"detail": "Sign-in storage is temporarily unavailable. Please try again."},
+                status_code=503,
             )
         except (AuthFailure, TimeoutError):
             response = JSONResponse(
@@ -399,7 +448,7 @@ def require_csrf(request: Request) -> SessionRecord:
     record = require_session(request)
     service: AuthService = request.app.state.auth
     token = request.headers.get("X-CSRF-Token", "")
-    if request.headers.get("Origin") != service.settings.origin or not secrets.compare_digest(
+    if request.headers.get("Origin") != service.settings.origin or not same_value(
         token, record.csrf_token
     ):
         raise HTTPException(403, "Invalid request origin or CSRF token.")
@@ -411,7 +460,7 @@ def build_auth_router(service: AuthService) -> APIRouter:
 
     @router.get("/api/auth/session")
     def status(request: Request) -> JSONResponse:
-        problem = service.settings.problem(service.base)
+        problem = service.problem()
         record = service.session(request) if not problem else None
         return JSONResponse(
             {
@@ -437,8 +486,13 @@ def build_auth_router(service: AuthService) -> APIRouter:
     @router.post("/api/auth/logout")
     def logout(request: Request) -> Response:
         require_csrf(request)
-        with service._lock:
-            service.sessions.pop(request.cookies.get(SESSION_COOKIE, ""), None)
+        assert service.store is not None
+        try:
+            service.store.revoke_session(request.cookies.get(SESSION_COOKIE, ""), service.scope)
+        except StoreUnavailable:
+            raise HTTPException(
+                503, "Sign-out storage is temporarily unavailable. Please try again."
+            ) from None
         response = Response(status_code=204, headers={"Cache-Control": "no-store"})
         response.delete_cookie(SESSION_COOKIE, secure=True, httponly=True, samesite="lax")
         return response

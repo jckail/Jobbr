@@ -5,9 +5,11 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from sqlalchemy import update
 from sqlmodel import Session, col, select
 
 from . import matching
+from .auth_models import AuthStoreGuard
 from .extract import Result, extract
 from .models import (
     Application,
@@ -17,6 +19,7 @@ from .models import (
     Job,
     Match,
     Profile,
+    SavedCareerDraft,
     Stage,
     pk,
     utcnow,
@@ -47,11 +50,18 @@ class Page:
 
 def get_profile(s: Session) -> Profile:
     profile = s.exec(select(Profile)).first()
+    if profile:
+        return profile
+    # The migrated singleton guard serializes first-owner creation across instances.
+    s.execute(update(AuthStoreGuard).where(col(AuthStoreGuard.id) == 1).values(id=1))
+    if s.get(AuthStoreGuard, 1) is None:
+        raise RuntimeError("Owner initialization requires the auth-store migration.")
+    profile = s.exec(select(Profile)).first()
     if not profile:
         profile = Profile()
         s.add(profile)
-        s.commit()
-        s.refresh(profile)
+    s.commit()
+    s.refresh(profile)
     return profile
 
 
@@ -233,7 +243,7 @@ def delete_job(s: Session, job: Job) -> None:
             s.delete(ev)
         s.flush()
         s.delete(app)
-    for model in (Match, Extraction):
+    for model in (Match, Extraction, SavedCareerDraft):
         for row in s.exec(select(model).where(col(model.job_id) == job_id)):
             s.delete(row)
     s.flush()

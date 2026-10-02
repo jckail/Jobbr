@@ -6,11 +6,12 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session
 
 from jobbr import db
 from jobbr.models import Company, Job
 from jobbr.schema import SchemaMismatchError
+from migrations.baseline import metadata as initial_schema
 
 
 def version() -> str:
@@ -20,7 +21,7 @@ def version() -> str:
 
 def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
     db.init_db()
-    assert version() == "0001_v2"
+    assert version() == "0003_auth_store"
     assert set(inspect(db.get_engine()).get_table_names()) == {
         "alembic_version",
         "company",
@@ -30,13 +31,17 @@ def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
         "match",
         "application",
         "applicationevent",
+        "savedcareerdraft",
+        "authtransaction",
+        "authsession",
+        "authstoreguard",
     }
     db.init_db()
-    assert version() == "0001_v2"
+    assert version() == "0003_auth_store"
 
 
 def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> None:
-    SQLModel.metadata.create_all(db.get_engine())
+    initial_schema.create_all(db.get_engine())
     with Session(db.get_engine()) as session:
         company = Company(name="Preserved company")
         session.add(company)
@@ -47,7 +52,7 @@ def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> N
         company_id, job_id = company.id, job.id
     db.init_db()
     db.init_db()
-    assert version() == "0001_v2"
+    assert version() == "0003_auth_store"
     with Session(db.get_engine()) as session:
         assert session.get(Company, company_id).name == "Preserved company"
         assert session.get(Job, job_id).skills == ["Python"]
@@ -66,7 +71,7 @@ def test_rejects_mismatched_unversioned_schema(
     env: pytest.MonkeyPatch,
     mutation: str,
 ) -> None:
-    SQLModel.metadata.create_all(db.get_engine())
+    initial_schema.create_all(db.get_engine())
     with db.get_engine().begin() as connection:
         connection.execute(text(mutation))
         connection.execute(
@@ -121,7 +126,7 @@ def test_rejects_constraint_and_type_mismatches(
     mismatch: str,
 ) -> None:
     altered = sa.MetaData()
-    for table in SQLModel.metadata.sorted_tables:
+    for table in initial_schema.sorted_tables:
         table.to_metadata(altered)
     if mismatch == "nullable":
         altered.tables["company"].c.name.nullable = True

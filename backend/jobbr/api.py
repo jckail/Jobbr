@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from . import __version__, repo, serializers, services, stats
+from . import __version__, drafts, repo, serializers, services, stats
 from .auth import AuthService, require_csrf, require_session
 from .career import (
     AIUnavailable,
@@ -16,7 +16,7 @@ from .career import (
 )
 from .config import get_settings
 from .db import get_session
-from .models import Extraction, Profile, Stage, pk
+from .models import Extraction, Profile, SavedCareerDraft, Stage, pk
 from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn
 from .serializers import Json
 
@@ -174,6 +174,57 @@ def get_stats(s: SessionDep) -> Json:
     profile = _profile(s)
     cost = s.exec(select(func.coalesce(func.sum(Extraction.cost_usd), 0.0))).one()
     return stats.compute(repo.job_rows(s, pk(profile)), profile, float(cost))
+
+
+def require_private_drafts(
+    request: Request, x_jobbr_token: Annotated[str | None, Header()] = None
+) -> None:
+    auth: AuthService = request.app.state.auth
+    if auth.settings.auth_enabled:
+        require_session(request)
+        return
+    token = get_settings().api_token
+    if not token or not secrets.compare_digest((x_jobbr_token or "").encode(), token.encode()):
+        raise HTTPException(401, "Sign in or provide the instance token to access private drafts.")
+
+
+draft_read = [Depends(require_private_drafts)]
+draft_write = [Depends(require_private_drafts), Depends(require_token)]
+
+
+@router.get("/jobs/{job_id}/career/drafts", dependencies=draft_read)
+def list_career_drafts(job_id: int, s: SessionDep) -> list[Json]:
+    _row(s, job_id)
+    return [drafts.output(row) for row in drafts.rows(s, job_id, pk(_profile(s)))]
+
+
+@router.post("/jobs/{job_id}/career/drafts", status_code=201, dependencies=draft_write)
+def save_career_draft(job_id: int, body: drafts.DraftSave, s: SessionDep) -> Json:
+    row = _row(s, job_id)
+    try:
+        saved = drafts.save(s, row.job, _profile(s), row.company.name, body)
+    except drafts.DraftLimitError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return drafts.output(saved)
+
+
+def _saved_draft(s: Session, job_id: int, draft_id: int) -> SavedCareerDraft:
+    _row(s, job_id)
+    saved = drafts.find(s, job_id, pk(_profile(s)), draft_id)
+    if not saved:
+        raise HTTPException(404, "Saved draft not found")
+    return saved
+
+
+@router.get("/jobs/{job_id}/career/drafts/{draft_id}", dependencies=draft_read)
+def get_career_draft(job_id: int, draft_id: int, s: SessionDep) -> Json:
+    return drafts.output(_saved_draft(s, job_id, draft_id))
+
+
+@router.delete("/jobs/{job_id}/career/drafts/{draft_id}", status_code=204, dependencies=draft_write)
+def delete_career_draft(job_id: int, draft_id: int, s: SessionDep) -> None:
+    s.delete(_saved_draft(s, job_id, draft_id))
+    s.commit()
 
 
 @router.post("/jobs/{job_id}/career/{kind}", dependencies=write)

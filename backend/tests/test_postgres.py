@@ -2,11 +2,13 @@
 
 import os
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 from sqlmodel import Session, SQLModel, select
@@ -15,6 +17,7 @@ from jobbr import db
 from jobbr.main import create_app
 from jobbr.models import Application, ApplicationEvent, Company, Extraction, Job, Match
 from jobbr.schema import SchemaMismatchError, verify_schema
+from migrations.baseline import metadata as initial_schema
 from tests.conftest import API, ARTICLE, reset_settings
 
 
@@ -68,7 +71,7 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
     db.init_db()
     with db.get_engine().connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0001_v2"
+            "0003_auth_store"
         )
         verify_schema(connection, SQLModel.metadata)
         assert set(inspect(connection).get_table_names()) == {
@@ -79,6 +82,10 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
             "match",
             "application",
             "applicationevent",
+            "savedcareerdraft",
+            "authtransaction",
+            "authsession",
+            "authstoreguard",
             "alembic_version",
         }
 
@@ -127,7 +134,7 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
 
 
 def test_postgres_adopts_existing_v2_without_rewriting_data(postgres: None) -> None:
-    SQLModel.metadata.create_all(db.get_engine())
+    initial_schema.create_all(db.get_engine())
     with Session(db.get_engine()) as session:
         company = Company(name="Preserved PostgreSQL company")
         session.add(company)
@@ -147,3 +154,83 @@ def test_postgres_rejects_enum_schema_drift(postgres: None) -> None:
         connection.execute(text("ALTER TYPE seniority ADD VALUE 'obsolete_level'"))
     with pytest.raises(SchemaMismatchError, match="Database schema mismatch"):
         db.init_db()
+
+
+def test_concurrent_postgres_startup_serializes_migrations(postgres, monkeypatch):
+    engine = db.get_engine()
+    initial_schema.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO company (name, created_at) "
+                "VALUES ('Concurrent survivor', '2026-01-01')"
+            )
+        )
+    first_inside = Event()
+    release_first = Event()
+    second_attempting = Event()
+    second_pid = []
+    observed = []
+    actual_upgrade = db.command.upgrade
+
+    def hold_first(*args, **kwargs):
+        if not first_inside.is_set():
+            first_inside.set()
+            assert release_first.wait(timeout=1.5), "Migration release exceeded the lock budget"
+        return actual_upgrade(*args, **kwargs)
+
+    def before_statement(connection, cursor, statement, parameters, context, executemany):
+        if "pg_advisory_xact_lock" in statement:
+            observed.append(connection.connection.driver_connection.info.backend_pid)
+            if len(observed) == 2:
+                second_pid.append(observed[-1])
+                second_attempting.set()
+
+    monkeypatch.setattr(db.command, "upgrade", hold_first)
+    event.listen(engine, "before_cursor_execute", before_statement)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            first = workers.submit(db.init_db)
+            assert first_inside.wait(timeout=1)
+            second = workers.submit(db.init_db)
+            try:
+                assert second_attempting.wait(timeout=0.5)
+                waiting = False
+                with engine.connect() as observer:
+                    for _ in range(40):
+                        waiting = observer.execute(
+                            text(
+                                "SELECT EXISTS (SELECT 1 FROM pg_locks "
+                                "WHERE pid = :pid AND NOT granted)"
+                            ),
+                            {"pid": second_pid[0]},
+                        ).scalar_one()
+                        if waiting:
+                            break
+                        second_attempting.clear()
+                        second_attempting.wait(timeout=0.01)
+                assert waiting, "Second instance did not block on the migration advisory lock"
+            finally:
+                release_first.set()
+            first.result(timeout=5)
+            second.result(timeout=5)
+    finally:
+        release_first.set()
+        event.remove(engine, "before_cursor_execute", before_statement)
+    with engine.connect() as connection:
+        assert (
+            connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            == "0003_auth_store"
+        )
+        assert (
+            connection.execute(text("SELECT name FROM company")).scalar_one()
+            == "Concurrent survivor"
+        )
+        verify_schema(connection, SQLModel.metadata)
+
+
+def test_first_owner_creation_is_serialized_in_postgres(postgres):
+    from tests.test_profile_concurrency import concurrent_owner_ids  # noqa: PLC0415
+
+    db.init_db()
+    concurrent_owner_ids()
