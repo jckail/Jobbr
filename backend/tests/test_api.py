@@ -110,7 +110,9 @@ def test_llm_used_when_key_set_and_falls_back_on_error(client, env):
     env.setenv("JOBBR_OPENAI_API_KEY", "test-key")
     reset_settings()
     fake = JobExtraction(company="LLMCo", title="Wizard", skills=["python"])
-    env.setattr(extract_mod, "llm_extract", lambda text, hint=None: (fake, 1000, 200))
+    env.setattr(
+        extract_mod, "llm_extract", lambda text, hint=None, *, settings=None: (fake, 1000, 200)
+    )
     job = add(client, text=POSTING)
     assert job["company"]["name"] == "LLMCo"
     run = client.get(f"{API}/jobs/{job['id']}").json()["extractions"][0]
@@ -119,7 +121,7 @@ def test_llm_used_when_key_set_and_falls_back_on_error(client, env):
     assert run["output_tokens"] == 200
     assert run["model"] == "gpt-4.1-mini"
 
-    def boom(text, hint=None):
+    def boom(text, hint=None, *, settings=None):
         raise RuntimeError("api down")
 
     env.setattr(extract_mod, "llm_extract", boom)

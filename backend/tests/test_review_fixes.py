@@ -76,11 +76,11 @@ def test_failed_ai_never_replaces_saved_details(client, env):
     env.setenv("JOBBR_OPENAI_API_KEY", "sk-test")
     reset_settings()
     good = JobExtraction(company="LLMCo", title="Good Title", skills=["python"])
-    env.setattr(extract, "llm_extract", lambda text, hint=None: (good, 10, 5))
+    env.setattr(extract, "llm_extract", lambda text, hint=None, *, settings=None: (good, 10, 5))
     job = add_text_job(client, url="https://example.com/jobs/1", company=None)
     assert job["title"] == "Good Title"
 
-    def down(text, hint=None):
+    def down(text, hint=None, *, settings=None):
         raise RuntimeError("provider down")
 
     env.setattr(extract, "llm_extract", down)

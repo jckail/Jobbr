@@ -4,6 +4,8 @@ import hashlib
 import json
 import re
 import secrets
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -13,7 +15,7 @@ from pydantic import ValidationError
 from sqlalchemy import update
 from sqlmodel import Session, col, select
 
-from . import matching, repo, serializers, tailoring
+from . import canonical, canonical_repo, matching, repo, serializers, tailoring
 from .auth_models import AuthStoreGuard
 from .career import AIUnavailable
 from .config import Settings, get_settings
@@ -332,66 +334,204 @@ def _ensure_application(s: Session, job: Job) -> None:
     s.add(ApplicationEvent(application_id=pk(app), to_stage=Stage.saved, note="Added"))
 
 
-def ingest(s: Session, body: JobCreate, *, settings: Settings | None = None) -> Job:
-    page = _load_page(body)
-    existing = s.exec(select(Job).where(Job.url == page.url)).first() if page.url else None
+@dataclass(frozen=True)
+class CapturePlan:
+    profile_id: int
+    identity: canonical.Identity | None
+    resource_key: str | None
+    nonce: str | None
+    job_id: int | None
+    baseline: str | None
+
+
+def _capture_target(s: Session, page: Page, identity: canonical.Identity | None) -> Job | None:
+    if identity is not None:
+        return canonical_repo.resolve_identity(s, identity)
+    return canonical_repo.exact_job(s, page.url) if page.url else None
+
+
+def _unchanged_capture(s: Session, existing: Job | None, page: Page, body: JobCreate) -> bool:
     if (
         existing
         and page.html is None  # Fetched JSON-LD can change without changing visible posting text.
-        and existing.raw_text == page.text
+        and existing.raw_text == page.text[:RAW_TEXT_LIMIT]
         and existing.content_hash == hashlib.sha256(page.text.encode()).hexdigest()[:16]
         and (body.title is None or body.title == existing.title)
     ):
         company = s.get(Company, existing.company_id)
         if company and (body.company is None or body.company.strip() == company.name):
-            return existing
-    result = (
-        extract(page.text, page.html, body.title, body.company, settings=settings)
-        if settings is not None
-        else extract(page.text, page.html, body.title, body.company)
-    )
-    if existing and result.error:
-        # AI failed and only the offline fallback ran: never replace saved details with weaker
-        # data. Log the attempt and return the job as it was.
+            return True
+    return False
+
+
+def _begin_capture(
+    s: Session, page: Page, body: JobCreate
+) -> tuple[CapturePlan | None, Job | None]:
+    # Page safety/loading precedes identity; inputs cannot assert their own provider identity.
+    identity = canonical.identity_for_url(page.url)
+    key = canonical.resource_key(page.url, identity)
+    profile = get_profile(s)
+    _profile_lock(s, profile)
+    existing = _capture_target(s, page, identity)
+    now = time.time()
+    if key is not None:
+        active = canonical_repo.lease(s, key)
+        if active is not None and active.expires_at > now:
+            raise canonical_repo.CanonicalConflict(
+                "This posting is already being captured. Wait before trying again.",
+                max(1, int(active.expires_at - now)),
+            )
+    if _unchanged_capture(s, existing, page, body):
+        s.commit()  # A lazily adopted identity is the only possible new row.
+        return None, existing
+    nonce = secrets.token_urlsafe(32) if key is not None else None
+    job_id = pk(existing) if existing is not None else None
+    baseline = canonical.job_baseline(existing) if existing is not None else None
+    plan = CapturePlan(pk(profile), identity, key, nonce, job_id, baseline)
+    if key is not None and nonce is not None:
+        canonical_repo.reserve(
+            s, key, nonce, now + canonical_repo.LEASE_TTL, job_id, baseline, now=now
+        )
+    s.commit()  # No database transaction or owner lock survives into provider extraction.
+    return plan, None
+
+
+def _capture_owner(s: Session, plan: CapturePlan) -> Profile:
+    profile = s.get(Profile, plan.profile_id, populate_existing=True)
+    if profile is None:
+        raise canonical_repo.CanonicalConflict(
+            "The capture owner changed. Review Jobbr before retrying."
+        )
+    _profile_lock(s, profile)
+    return profile
+
+
+def _finish_capture(s: Session, plan: CapturePlan, page: Page, result: Result) -> Job:
+    s.rollback()
+    profile = _capture_owner(s, plan)
+    if plan.resource_key is not None and plan.nonce is not None:
+        canonical_repo.check(s, plan.resource_key, plan.nonce)
+    existing = _capture_target(s, page, plan.identity)
+    if (pk(existing) if existing is not None else None) != plan.job_id or (
+        existing is not None and canonical.job_baseline(existing) != plan.baseline
+    ):
+        raise canonical_repo.CanonicalConflict(
+            "The saved posting changed during capture. Review it before retrying."
+        )
+    if existing is not None and result.error:
+        # Preserve the remote correctness fix: weaker fallback never replaces reviewed details.
         _record_extraction(s, existing, result)
-        s.commit()
-        s.refresh(existing)
-        return existing
-    host = urlparse(page.url).hostname if page.url else None
-    company = get_or_create_company(s, _company_name(result.data.company, page.url), host)
-
-    job = existing or Job(company_id=pk(company), url=page.url, title=result.data.title)
-    job.company_id = pk(company)
-    _apply_extraction(job, result, page.text)
-    s.add(job)
-    s.flush()
-
-    _record_extraction(s, job, result)
-    _ensure_application(s, job)
-    rematch(s, job)
+        job = existing
+    else:
+        host = urlparse(page.url).hostname if page.url else None
+        company = get_or_create_company(s, _company_name(result.data.company, page.url), host)
+        job = existing or Job(company_id=pk(company), url=page.url, title=result.data.title)
+        job.company_id = pk(company)
+        _apply_extraction(job, result, page.text)
+        s.add(job)
+        s.flush()
+        _record_extraction(s, job, result)
+        _ensure_application(s, job)
+        rematch(s, job, profile)
+    if plan.identity is not None:
+        canonical_repo.attach_identity(s, plan.identity, job)
+    if plan.resource_key is not None and plan.nonce is not None:
+        canonical_repo.release(s, plan.resource_key, plan.nonce)
     s.commit()
     s.refresh(job)
     return job
 
 
-def reextract(s: Session, job: Job) -> Job:
-    if not job.raw_text:
-        raise UserError("No stored text for this job.")
-    result = extract(job.raw_text)
-    _record_extraction(s, job, result)
-    if result.error:
-        # The AI call failed and only the weaker offline fallback ran. Keep the saved details
-        # rather than overwrite them, but keep the failed attempt in the extraction log.
+def _abort_capture(s: Session, plan: CapturePlan) -> None:
+    # Cleanup may fail during an outage, but never replaces the original failure/cancellation.
+    try:
+        s.rollback()
+        if plan.resource_key is None or plan.nonce is None:
+            return
+        _capture_owner(s, plan)
+        canonical_repo.release(s, plan.resource_key, plan.nonce)
         s.commit()
+    except Exception:
+        with suppress(Exception):
+            s.rollback()  # Preserve the original error if the connection is unavailable.
+
+
+def ingest(s: Session, body: JobCreate, *, settings: Settings | None = None) -> Job:
+    page = _load_page(body)
+    plan, unchanged = _begin_capture(s, page, body)
+    if unchanged is not None:
+        return unchanged
+    if plan is None:
+        raise RuntimeError("Capture reservation was not initialized.")
+    try:
+        result = (
+            extract(page.text, page.html, body.title, body.company, settings=settings)
+            if settings is not None
+            else extract(page.text, page.html, body.title, body.company)
+        )
+        return _finish_capture(s, plan, page, result)
+    except BaseException:
+        _abort_capture(s, plan)
+        raise
+
+
+def _finish_reextract(s: Session, plan: CapturePlan, job_id: int, text: str, result: Result) -> Job:
+    s.rollback()
+    owner = _capture_owner(s, plan)
+    assert plan.resource_key is not None
+    assert plan.nonce is not None
+    canonical_repo.check(s, plan.resource_key, plan.nonce)
+    fresh = canonical_repo.existing_job(s, job_id)
+    if fresh is None or canonical.job_baseline(fresh) != plan.baseline:
+        raise canonical_repo.CanonicalConflict(
+            "The saved posting changed during re-extraction. Review it before retrying."
+        )
+    _record_extraction(s, fresh, result)
+    if not result.error:
+        _apply_extraction(fresh, result, text, rehash=False)
+        s.add(fresh)
+        rematch(s, fresh, owner)
+    canonical_repo.release(s, plan.resource_key, plan.nonce)
+    s.commit()
+    if result.error:
         raise UserError(
             "AI extraction failed, so your saved details were left unchanged. Try again."
         )
-    _apply_extraction(job, result, job.raw_text, rehash=False)
-    s.add(job)
-    rematch(s, job)
+    s.refresh(fresh)
+    return fresh
+
+
+def reextract(s: Session, job: Job, *, settings: Settings | None = None) -> Job:
+    profile = get_profile(s)
+    _profile_lock(s, profile)
+    current = canonical_repo.existing_job(s, pk(job))
+    if current is None:
+        raise canonical_repo.CanonicalConflict(
+            "The saved posting was deleted. Review Jobbr before retrying."
+        )
+    if not current.raw_text:
+        raise UserError("No stored text for this job.")
+    identity = canonical.identity_for_url(current.url)
+    key = (
+        canonical.resource_key(current.url, identity)
+        or hashlib.sha256(f"reextract:{pk(current)}".encode()).hexdigest()
+    )
+    now = time.time()
+    nonce = secrets.token_urlsafe(32)
+    baseline = canonical.job_baseline(current)
+    plan = CapturePlan(pk(profile), identity, key, nonce, pk(current), baseline)
+    canonical_repo.reserve(
+        s, key, nonce, now + canonical_repo.LEASE_TTL, pk(current), baseline, now=now
+    )
+    text = current.raw_text
+    job_id = pk(current)
     s.commit()
-    s.refresh(job)
-    return job
+    try:
+        result = extract(text, settings=settings) if settings is not None else extract(text)
+        return _finish_reextract(s, plan, job_id, text, result)
+    except BaseException:
+        _abort_capture(s, plan)
+        raise
 
 
 def patch_job(s: Session, job: Job, body: JobPatch) -> Job:
@@ -416,6 +556,7 @@ def delete_job(s: Session, job: Job) -> None:
     """Delete a job and everything hanging off it (children first; no ORM cascades defined)."""
     job_id = pk(job)
     _profile_lock(s, get_profile(s))
+    canonical_repo.delete_job_refs(s, job_id)
     for receipt in s.exec(select(TailoringReceipt).where(TailoringReceipt.job_id == job_id)):
         s.delete(receipt)
     for app in s.exec(select(Application).where(Application.job_id == job_id)):

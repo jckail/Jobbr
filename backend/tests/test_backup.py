@@ -115,6 +115,8 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
             "capturegrant",
             "capturereceipt",
             "capturethrottle",
+            "jobexternalidentity",
+            "capturelease",
             "company",
             "job",
             "application",
@@ -244,7 +246,14 @@ def test_publication_race_does_not_replace_concurrent_output(
 
 @pytest.mark.parametrize(
     "revision",
-    ["0001_v2", "0002_saved_drafts", "0003_auth_store", "0004_profile_revisions", "0005_tailoring"],
+    [
+        "0001_v2",
+        "0002_saved_drafts",
+        "0003_auth_store",
+        "0004_profile_revisions",
+        "0005_tailoring",
+        "0006_extension_capture",
+    ],
 )
 def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, revision):
     configuration = Config()
@@ -281,6 +290,92 @@ def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, rev
     with sqlite3.connect(restored) as copy, sqlite3.connect(snapshot) as archive:
         assert copy.execute("SELECT name FROM company").fetchone() == ("Historical company",)
         assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0006_extension_capture",
+            "0007_canonical_capture",
         )
         assert archive.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)
+
+
+def test_version_six_snapshot_preserves_capture_authorization_metadata_on_upgrade(
+    env: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The former head remains valid and restored grants are never silently reset."""
+    configuration = Config()
+    configuration.set_main_option(
+        "script_location", str(Path(__file__).resolve().parents[1] / "migrations")
+    )
+    with db.get_engine().begin() as connection:
+        configuration.attributes["connection"] = connection
+        command.upgrade(configuration, "0006_extension_capture")
+        connection.execute(
+            text(
+                "INSERT INTO capturepairing "
+                "(pairing_digest, extension_id, challenge, comparison_code, scope_hash, "
+                "expires_at, session_digest, ai_provider, ai_model, llm_enabled, consumed) "
+                "VALUES ('pairing-hash', 'reviewed-id', 'challenge', 'ABCD1234', 'scope-hash', "
+                "12345, 'session-hash', 'openai', 'test-model', 0, 1)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO capturegrant "
+                "(token_digest, grant_id, extension_id, session_digest, scope_hash, ai_provider, "
+                "ai_model, llm_enabled, expires_at, captures_remaining, busy, revoked) "
+                "VALUES ('token-hash', 'grant-id', 'reviewed-id', 'session-hash', 'scope-hash', "
+                "'openai', 'test-model', 0, 12345, 2, 0, 1)"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO capturereceipt "
+                "(token_digest, request_digest, input_digest, status, job_id) "
+                "VALUES ('token-hash', 'request-hash', 'input-hash', 'failed', NULL)"
+            )
+        )
+        connection.execute(text("UPDATE capturethrottle SET window_start = 123, count = 7"))
+    archive = tmp_path / "version-six-archive.db"
+    restored = tmp_path / "version-six-restored.db"
+    source = source_path()
+    original_bytes = source.read_bytes()
+    backup.snapshot(source, archive)
+    assert source.read_bytes() == original_bytes
+    archive_bytes = archive.read_bytes()
+    backup.snapshot(archive, restored)
+    assert archive.read_bytes() == archive_bytes
+    env.setenv("JOBBR_DATABASE_URL", f"sqlite:///{restored}")
+    reset_settings()
+    db.init_db()
+    backup.verify(restored)
+    with sqlite3.connect(archive) as old, sqlite3.connect(restored) as upgraded:
+        assert old.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0006_extension_capture",
+        )
+        assert upgraded.execute("SELECT version_num FROM alembic_version").fetchone() == (
+            "0007_canonical_capture",
+        )
+        for table in ("capturepairing", "capturegrant", "capturereceipt", "capturethrottle"):
+            assert old.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall() == (
+                upgraded.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall()
+            )
+        assert upgraded.execute("SELECT count(*) FROM jobexternalidentity").fetchone() == (0,)
+        assert upgraded.execute("SELECT count(*) FROM capturelease").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("revision", ["0006_extension_capture", "0007_canonical_capture"])
+def test_backup_requires_capture_throttle_guard_at_old_and_new_heads(
+    env: pytest.MonkeyPatch,
+    revision: str,
+    tmp_path: Path,
+) -> None:
+    configuration = Config()
+    configuration.set_main_option(
+        "script_location", str(Path(__file__).resolve().parents[1] / "migrations")
+    )
+    with db.get_engine().begin() as connection:
+        configuration.attributes["connection"] = connection
+        command.upgrade(configuration, revision)
+        connection.execute(text("DELETE FROM capturethrottle"))
+    output = tmp_path / "invalid-guard-snapshot.db"
+    with pytest.raises(backup.BackupError, match="Extension initialization guard"):
+        backup.snapshot(source_path(), output)
+    assert not output.exists()

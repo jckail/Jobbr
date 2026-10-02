@@ -9,7 +9,7 @@ from sqlalchemy import Engine, event, text
 from sqlalchemy.engine import make_url
 from sqlmodel import Session, SQLModel, create_engine
 
-from . import auth_models, capture_models, models  # noqa: F401 (registers tables)
+from . import auth_models, canonical_models, capture_models, models  # noqa: F401 (registers tables)
 from .config import get_settings
 from .schema import verify_schema
 

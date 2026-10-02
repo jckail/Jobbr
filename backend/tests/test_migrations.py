@@ -21,7 +21,7 @@ def version() -> str:
 
 def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
     db.init_db()
-    assert version() == "0006_extension_capture"
+    assert version() == "0007_canonical_capture"
     assert set(inspect(db.get_engine()).get_table_names()) == {
         "alembic_version",
         "company",
@@ -43,9 +43,11 @@ def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
         "capturegrant",
         "capturereceipt",
         "capturethrottle",
+        "jobexternalidentity",
+        "capturelease",
     }
     db.init_db()
-    assert version() == "0006_extension_capture"
+    assert version() == "0007_canonical_capture"
 
 
 def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> None:
@@ -60,7 +62,7 @@ def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> N
         company_id, job_id = company.id, job.id
     db.init_db()
     db.init_db()
-    assert version() == "0006_extension_capture"
+    assert version() == "0007_canonical_capture"
     with Session(db.get_engine()) as session:
         assert session.get(Company, company_id).name == "Preserved company"
         assert session.get(Job, job_id).skills == ["Python"]
@@ -159,3 +161,54 @@ def test_rejects_constraint_and_type_mismatches(
     altered.create_all(db.get_engine())
     with pytest.raises(SchemaMismatchError, match="Database schema mismatch"):
         db.init_db()
+
+
+def test_canonical_upgrade_adds_empty_tables_without_rewriting_existing_jobs(
+    env: pytest.MonkeyPatch,
+) -> None:
+    configuration = Config()
+    configuration.set_main_option(
+        "script_location", str(Path(__file__).resolve().parents[1] / "migrations")
+    )
+    with db.get_engine().begin() as connection:
+        configuration.attributes["connection"] = connection
+        command.upgrade(configuration, "0006_extension_capture")
+    with Session(db.get_engine()) as session:
+        company = Company(name="Existing duplicate company")
+        session.add(company)
+        session.flush()
+        jobs = [
+            Job(
+                company_id=company.id,
+                title=title,
+                url="https://boards.greenhouse.io/example/jobs/123",
+                skills=["Python"],
+                raw_text="Existing posting must remain unchanged.",
+            )
+            for title in ("First existing posting", "Second existing posting")
+        ]
+        session.add_all(jobs)
+        session.commit()
+    with db.get_engine().connect() as connection:
+        previous_jobs = connection.execute(text("SELECT * FROM job ORDER BY id")).fetchall()
+        previous_indexes = inspect(connection).get_indexes("job")
+        previous_throttle = connection.execute(text("SELECT * FROM capturethrottle")).fetchall()
+    db.init_db()
+    db.init_db()
+    with db.get_engine().connect() as connection:
+        assert connection.execute(text("SELECT * FROM job ORDER BY id")).fetchall() == previous_jobs
+        assert inspect(connection).get_indexes("job") == previous_indexes
+        assert (
+            connection.execute(text("SELECT * FROM capturethrottle")).fetchall()
+            == previous_throttle
+        )
+        assert (
+            connection.execute(text("SELECT count(*) FROM jobexternalidentity")).scalar_one() == 0
+        )
+        assert connection.execute(text("SELECT count(*) FROM capturelease")).scalar_one() == 0
+        lease_columns = {
+            column["name"]: column for column in inspect(connection).get_columns("capturelease")
+        }
+        assert lease_columns["job_id"]["nullable"] is True
+        assert lease_columns["job_baseline"]["nullable"] is True
+        assert version() == "0007_canonical_capture"

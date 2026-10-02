@@ -218,3 +218,37 @@ again before publishing to the existing draft PR.
 Prepared ignored Docker acceptance helpers export only committed image inputs
 and use an isolated QA volume. They have not executed. The local app still runs
 db40e3f, and real Chrome acceptance still awaits the installation-path handoff.
+
+
+## Canonical capture integration (October 2, verification in progress)
+
+Current source worktree: `/home/jkail/jobbr-discovery-identity-20261002`,
+branch `work/discovery-identity-20261002`, based on integrated authorization
+head 0856734 and remote d9d6947. The original v2 worktree and its other owner's
+cloud changes remain intact. PR1 remains a draft.
+
+Known Greenhouse/Lever aliases now resolve to one saved job without rewriting
+the first URL or merging ambiguous legacy records. Additive migration 0007
+creates empty identity/lease tables; frozen 0006 backup compatibility remains.
+Capture and re-extraction reserve bounded leases before provider dispatch, then
+check the lease and saved-job baseline before committing. Provider calls run
+without a database transaction. Generic job API calls also pin the settings
+checked at admission through actual dispatch. Expiry fences stale writes; it
+does not promise exactly-once provider billing. Discovery freshness remains open.
+
+The first full guarded gate passed Ruff/format, strict mypy and 527 backend
+tests, including disposable PostgreSQL, with one intentional skip. Two legacy
+AI mocks rejected the newly supplied settings argument. Their signatures were
+corrected without weakening assertions, and both focused regressions passed.
+The corrected full gate exited 75 before any checks because the shared slot
+was occupied (`.local/verify-canonical-integration-corrected.log`). No unchanged
+retry or bypass followed. Web, extension and release checks remain required
+before push, and no new source was published. Log:
+`.local/verify-canonical-integration.log`. Root is the sole full verifier.
+
+Codemogger indexing cannot run because shared dependencies are not installed;
+its attempt queued no heavy job. Shared Graphify has no Jobbr coverage; live
+source and focused review were used. Agent Hub still does not select this
+worktree's memory scope. These are retrieval gaps, not passing-check evidence.
+Real Chrome acceptance remains held for the other agent's installation-path
+repair handoff; no configuration changes or path workaround were attempted.

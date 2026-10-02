@@ -1,8 +1,9 @@
 # Canonical discovery and concurrent capture
 
-Design reviewed against current source; implementation has not started. Direct
-extension authorization currently owns the next additive migration. This work
-follows it and does not replace the existing unchanged-posting preservation path.
+Source implementation is ready for integration verification in the isolated
+discovery-identity worktree. Migration 0007 follows direct extension authorization
+at revision 0006. The existing unchanged-posting preservation path remains, with
+an additional fix for identical pasted postings longer than the stored prefix.
 
 ## Identity
 
@@ -20,16 +21,24 @@ requires an actionable conflict response.
 
 ## Concurrent extraction
 
-Reserve a short, fenced capture lease before extraction under the existing owner
+Reserve a fenced capture lease before extraction under the existing owner
 lock. Unsupported URL captures can use an exact URL digest; text-only captures
 remain distinct. A competing capture receives a conflict without dispatching a
 provider request. Release the database transaction during extraction.
 
 On completion, reacquire the owner lock and check lease nonce, deadline and job
-baseline before atomically saving the result and identity mapping. Expired lease
+baseline before atomically saving the result and identity mapping. Leases last
+at most 300 seconds, with a shared cap of 128. Legacy lookup scans at most 1000
+candidates for the requested posting, rather than unrelated provider jobs.
+Expired lease
 takeover uses a new nonce so a late worker cannot overwrite newer data. Failure
 and cancellation release only the worker's own lease. Do not automatically retry
 provider calls or claim exactly-once billing after a crash or ambiguous timeout.
+Expiry takeover can dispatch another provider call while an old worker is still
+running; fencing prevents its late database write, not the remote charge.
+
+Explicit re-extraction uses the same reservation and baseline checks. It cannot
+silently replace newer posting details after starting from older stored text.
 
 Explicit job deletion removes that job's mappings and reservations. Unchanged
 captures continue preserving pipeline state, notes and saved drafts. Older live
@@ -42,6 +51,10 @@ Exercise simultaneous alias captures on SQLite and PostgreSQL: one extraction,
 one job, preserved related records. Cover stale-worker fencing, changed input,
 legacy ambiguity, cancellation and backup compatibility. Freeze the preceding
 schema for installed backups before adding the next migration.
+
+Focused verification passed 25 identity/repository cases, 34 migration/backup
+cases, and four root-selected SQLite orchestration cases. PostgreSQL and the
+mandatory combined gate remain pending. No canonical source has been published.
 
 Discovery freshness is a separate remaining task. An identity or timestamp alone
 does not prove that a posting is still available.

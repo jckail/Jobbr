@@ -79,7 +79,7 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
     db.init_db()
     with db.get_engine().connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0006_extension_capture"
+            "0007_canonical_capture"
         )
         verify_schema(connection, SQLModel.metadata)
         assert set(inspect(connection).get_table_names()) == {
@@ -102,6 +102,8 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
             "capturegrant",
             "capturereceipt",
             "capturethrottle",
+            "jobexternalidentity",
+            "capturelease",
             "alembic_version",
         }
 
@@ -236,7 +238,7 @@ def test_concurrent_postgres_startup_serializes_migrations(postgres, monkeypatch
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0006_extension_capture"
+            == "0007_canonical_capture"
         )
         assert (
             connection.execute(text("SELECT name FROM company")).scalar_one()

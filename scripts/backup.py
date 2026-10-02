@@ -26,9 +26,10 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402
 
-from jobbr import auth_models, capture_models, models  # noqa: E402, F401
+from jobbr import auth_models, canonical_models, capture_models, models  # noqa: E402, F401
 from jobbr.schema import SchemaMismatchError, verify_schema  # noqa: E402
 from migrations.baseline import metadata as initial_schema  # noqa: E402
+from migrations.capture_baseline import metadata as capture_schema  # noqa: E402
 from migrations.drafts_baseline import metadata as drafts_schema  # noqa: E402
 from migrations.revisions_baseline import metadata as revisions_schema  # noqa: E402
 from migrations.store_baseline import metadata as store_schema  # noqa: E402
@@ -69,6 +70,7 @@ def verify(path: Path) -> None:
             "0003_auth_store": store_schema,
             "0004_profile_revisions": revisions_schema,
             "0005_tailoring": tailoring_schema,
+            "0006_extension_capture": capture_schema,
         }
         if revisions == heads:
             expected = SQLModel.metadata

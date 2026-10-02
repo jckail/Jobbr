@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request
 from fastapi.responses import Response
 from sqlmodel import Session
 
+from . import canonical_repo, services
 from . import capture_services as captures
-from . import services
 from .auth import SESSION_COOKIE, AuthService, require_csrf, require_session
 from .capture_schemas import ApproveIn, CaptureIn, ExchangeIn
 from .db import get_session
@@ -90,6 +90,13 @@ def capture(
         )
     except captures.CaptureError as exc:
         raise _error(exc) from exc
+    except canonical_repo.CanonicalConflict as exc:
+        headers = (
+            {"Retry-After": str(max(1, min(300, exc.retry_after)))}
+            if exc.retry_after is not None
+            else None
+        )
+        raise HTTPException(409, str(exc), headers=headers) from exc
     except services.UserError as exc:
         raise HTTPException(422, str(exc)) from exc
 

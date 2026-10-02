@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from . import __version__, drafts, repo, serializers, services, stats, tailoring
+from . import __version__, canonical_repo, drafts, repo, serializers, services, stats, tailoring
 from .auth import AuthService, require_csrf, require_session
 from .career import (
     AIUnavailable,
@@ -14,7 +14,7 @@ from .career import (
     CareerResult,
     generate_career,
 )
-from .config import get_settings
+from .config import Settings, get_settings
 from .db import get_session
 from .models import Extraction, Profile, SavedCareerDraft, Stage, pk
 from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn, RevisionActivate
@@ -42,14 +42,14 @@ def require_ai_selection(
     x_jobbr_ai_provider: Annotated[str | None, Header(max_length=20)] = None,
     x_jobbr_ai_model: Annotated[str | None, Header(max_length=200)] = None,
     x_jobbr_ai_enabled: Annotated[str | None, Header(max_length=5)] = None,
-) -> None:
+) -> Settings:
     """Reject stale browser disclosures before any AI-capable action runs."""
+    settings = get_settings().model_copy(deep=True)
     expected = (x_jobbr_ai_provider, x_jobbr_ai_model, x_jobbr_ai_enabled)
     if all(value is None for value in expected):
-        return  # Existing programmatic clients use explicit server configuration.
+        return settings  # Programmatic clients use a captured server configuration.
     if any(value is None for value in expected):
         raise HTTPException(422, "Provide the complete AI settings selection.")
-    settings = get_settings()
     actual = (
         settings.ai_provider,
         settings.ai_model,
@@ -58,8 +58,11 @@ def require_ai_selection(
     if expected != actual:
         raise HTTPException(409, "AI settings changed. Refresh and review the disclosure again.")
 
+    return settings
+
 
 ai_write = [*write, Depends(require_ai_selection)]
+SettingsDep = Annotated[Settings, Depends(require_ai_selection)]
 
 
 def require_access(request: Request, x_jobbr_token: Annotated[str | None, Header()] = None) -> None:
@@ -90,6 +93,13 @@ def _row(s: Session, job_id: int) -> repo.JobRow:
 
 def _detail(s: Session, job_id: int) -> Json:
     return serializers.job_out(_row(s, job_id), detail=True)
+
+
+def _capture_conflict(e: canonical_repo.CanonicalConflict) -> HTTPException:
+    headers = (
+        {"Retry-After": str(max(1, min(300, e.retry_after)))} if e.retry_after is not None else None
+    )
+    return HTTPException(409, str(e), headers=headers)
 
 
 def _user_error(e: services.UserError) -> HTTPException:
@@ -144,9 +154,11 @@ def list_jobs(
 
 
 @router.post("/jobs", status_code=201, dependencies=ai_write)
-def add_job(body: JobCreate, s: SessionDep) -> Json:
+def add_job(body: JobCreate, s: SessionDep, settings: SettingsDep) -> Json:
     try:
-        job = services.ingest(s, body)
+        job = services.ingest(s, body, settings=settings)
+    except canonical_repo.CanonicalConflict as e:
+        raise _capture_conflict(e) from e
     except services.UserError as e:
         raise _user_error(e) from e
     return _detail(s, pk(job))
@@ -173,9 +185,11 @@ def patch_job(job_id: int, body: JobPatch, s: SessionDep) -> Json:
 
 
 @router.post("/jobs/{job_id}/reextract", dependencies=ai_write)
-def reextract(job_id: int, s: SessionDep) -> Json:
+def reextract(job_id: int, s: SessionDep, settings: SettingsDep) -> Json:
     try:
-        services.reextract(s, _row(s, job_id).job)
+        services.reextract(s, _row(s, job_id).job, settings=settings)
+    except canonical_repo.CanonicalConflict as e:
+        raise _capture_conflict(e) from e
     except services.UserError as e:
         raise _user_error(e) from e
     return _detail(s, job_id)

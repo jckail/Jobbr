@@ -20,7 +20,7 @@ Target: a private job-search workspace at https://jckail.com/jobbr, with an exce
 4. Greenhouse/Lever discovery with checked source provenance and explicit saving is implemented; reminders are wired. Improve freshness/deduplication and richer search. Headless fetching needs a verified SSRF-safe browser strategy; extension capture already handles rendered text without backend browser access.
 5. Add persistent user ownership and authenticated per-query authorization if expanding beyond the single-owner instance; shared encrypted transaction/session storage is implemented; PostgreSQL shared-session and startup-concurrency regressions passed hosted CI; verify production stable-key configuration before multiple workers/replicas. Current configured owner restriction must remain until this is verified.
 6. Verify real ChatGPT client registration/callback and live SDK behavior using authorized server credentials; no ChatGPT-plan billing inferred from identity sign-in.
-7. Test extension in real Chrome and design a supported extension authentication flow for OIDC; current token-only capture deliberately declines OIDC mode.
+7. Complete real-Chrome acceptance of the implemented owner-approved, PKCE-bound extension authorization flow. Token capture remains available; registered website login, installation-path authorization and end-to-end popup verification remain pending.
 8. Hosted PostgreSQL migration/CRUD and startup-contention tests pass. Verify production migrations/CRUD, backup/restore and upgrades before launch or scaling.
 9. Finish CI/CD security gates (dependency/container/secret scans, least-privilege release credentials, image attestations, reviewable deployment), then provision approved GCP/Kubernetes target and verify https://jckail.com/jobbr end to end after local iteration.
 10. Legacy removal pending exact-list approval in LEGACY_CLEANUP.md; credential rotation requires identifying owner-authorized credentials without exposing them.
@@ -60,3 +60,21 @@ Immutable profile-history foundation now includes private snapshots, explicit re
 Immutable profile history atdb40e3f is pushed with green hosted CI and is running in the owned local Compose app with every prior product record preserved. The next reviewed increment implements revision-based resume tailoring, metadata-only generation receipts, separate save/activation, expected-version conflicts, frozen0004/additive0005 backup support, extension paid-provider consent/settings pins, and expired-session UI cleanup. Mandatory combined verification passed392backend cases including live PostgreSQL plus seven release and seven extension tests and all lint/types/build checks. Publication/exact-head hosted CI follows; paid provider and production acceptance remain unverified.
 
 Shared Chrome extension tools are enabled, but install path authorization is being repaired by a separate maintenance agent. A source UI generation check was interrupted by its browser reconnect, so full tailoring browser and installed extension acceptance remain open. Resume root's synthetic fixture and real extension checks after the verified maintenance handoff. Existing saved cover-letter/interview drafts still have historical save-time fingerprints, not generation-revision provenance. Discovery canonical identity/concurrent duplicate prevention/freshness, supported direct OIDC extension authorization, live identity/provider setup, production bootstrap/routing, and owner-approved legacy cleanup/credential rotation remain tracked.
+
+
+## Canonical capture and extension authorization source checkpoint
+
+The isolated worktree `/home/jkail/jobbr-discovery-identity-20261002` integrates
+remote d9d6947 with owner-approved direct extension capture and the additive
+0007 canonical identity/lease increment. Known ATS aliases share one job; stale
+provider results cannot overwrite a concurrently edited job. Ambiguous legacy
+rows require review rather than merging. Capture and re-extraction pin checked
+provider settings and release transactions before dispatch.
+
+The first complete backend gate passed 527 cases with PostgreSQL and one
+intentional skip, then failed two legacy mock signatures. Both corrected
+regressions passed; the corrected full gate exited 75 before execution. Full
+backend/web/extension/release checks are still required before publication.
+Upstream availability/freshness tracking remains the next discovery increment.
+Real Chrome, website registration, paid provider verification, the tested local
+image upgrade and production acceptance remain open.

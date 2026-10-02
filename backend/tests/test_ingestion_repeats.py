@@ -27,7 +27,7 @@ TEXT = "Engineer\nBuild reliable Python services and help improve our platform."
 def extraction_calls(monkeypatch):
     calls = []
 
-    def recording(text, html=None, title=None, company=None):
+    def recording(text, html=None, title=None, company=None, *, settings=None):
         calls.append((text, html, title, company))
         return Result(
             data=JobExtraction(
