@@ -82,6 +82,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Check release guards without cloud access
+        run: python scripts/test_cloud_run_release.py
       - run: uv sync --project backend --locked --extra dev
       - run: |
           uv export --project backend --locked --no-dev --no-emit-project --no-header --format requirements-txt --output-file /tmp/jobbr-requirements.lock

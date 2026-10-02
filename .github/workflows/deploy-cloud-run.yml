@@ -1,0 +1,340 @@
+name: manual Jobbr release
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: Published GHCR SHA256 digest, including sha256 prefix
+        required: true
+        type: string
+      source_commit:
+        description: Full main commit SHA that produced the image
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful main CI run that attested this exact image
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: jobbr-production-release
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main' && github.repository == 'jckail/Jobbr'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      attestations: read
+    outputs:
+      digest: ${{ steps.verify.outputs.digest }}
+      source_commit: ${{ steps.verify.outputs.source_commit }}
+      image: ${{ steps.verify.outputs.image }}
+    steps:
+      - name: Validate immutable release inputs
+        env:
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+        run: |
+          python - <<'PY'
+          import os, re
+          rules = {"IMAGE_DIGEST": r"sha256:[0-9a-f]{64}",
+                   "SOURCE_COMMIT": r"[0-9a-f]{40}", "CI_RUN_ID": r"[1-9][0-9]*"}
+          for name, pattern in rules.items():
+              if not re.fullmatch(pattern, os.environ[name]):
+                  raise SystemExit("Invalid release input: " + name)
+          PY
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify main provenance and successful publishing run before Google auth
+        id: verify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          repo = os.environ["GITHUB_REPOSITORY"]
+          digest, commit, run_id = (os.environ[key] for key in
+                                    ("IMAGE_DIGEST", "SOURCE_COMMIT", "CI_RUN_ID"))
+          image = "ghcr.io/jckail/jobbr@" + digest
+          def command(args):
+              result = subprocess.run(args, capture_output=True, text=True, timeout=120)
+              if result.returncode:
+                  raise SystemExit("Release provenance verification failed; no Google authentication performed.")
+              return json.loads(result.stdout)
+          verified = command([
+              "gh", "attestation", "verify", "oci://" + image, "--repo", repo,
+              "--signer-workflow", repo + "/.github/workflows/ci.yml",
+              "--cert-identity", "https://github.com/" + repo + "/.github/workflows/ci.yml@refs/heads/main",
+              "--source-ref", "refs/heads/main", "--source-digest", commit,
+              "--signer-digest", commit, "--deny-self-hosted-runners", "--format", "json",
+          ])
+          run = command(["gh", "api", "repos/" + repo + "/actions/runs/" + run_id])
+          if not (run.get("event") == "push" and run.get("head_branch") == "main"
+                  and run.get("head_sha") == commit and run.get("status") == "completed"
+                  and run.get("conclusion") == "success" and run.get("path") == ".github/workflows/ci.yml"
+                  and run.get("repository", {}).get("full_name") == repo):
+              raise SystemExit("Selected CI run is not a successful main publication from this repository.")
+          attempt = str(run["run_attempt"])
+          invocation = "https://github.com/" + repo + "/actions/runs/" + run_id + "/attempts/" + attempt
+          def matches(entry):
+              statement = entry.get("verificationResult", {}).get("statement", {})
+              predicate = statement.get("predicate", {})
+              definition = predicate.get("buildDefinition", {})
+              workflow = definition.get("externalParameters", {}).get("workflow", {})
+              return (
+                  predicate.get("runDetails", {}).get("metadata", {}).get("invocationId") == invocation
+                  and workflow == {"ref": "refs/heads/main", "repository": "https://github.com/" + repo,
+                                   "path": ".github/workflows/ci.yml"}
+                  and definition.get("internalParameters", {}).get("github", {}).get("event_name") == "push"
+                  and any(subject.get("digest", {}).get("sha256") == digest.removeprefix("sha256:")
+                          for subject in statement.get("subject", []))
+              )
+          if not isinstance(verified, list) or not any(matches(entry) for entry in verified):
+              raise SystemExit("Verified attestation does not belong to the selected successful CI attempt.")
+          jobs = command(["gh", "api", "--paginate", "--slurp",
+                          "repos/" + repo + "/actions/runs/" + run_id + "/attempts/" + attempt + "/jobs?per_page=100"])
+          if not any(job.get("name") == "image-publish" and job.get("conclusion") == "success"
+                     for page in jobs for job in page.get("jobs", [])):
+              raise SystemExit("The selected publishing job did not succeed.")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("digest=" + digest + "\nsource_commit=" + commit + "\nimage=" + image + "\n")
+          print("Verified exact image digest, main source and successful publishing attempt.")
+          PY
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+    env:
+      GCP_PROJECT: portfolio-383615
+      GCP_REGION: us-central1
+      GCP_SERVICE: jobbr
+      GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      GCP_DEPLOY_SERVICE_ACCOUNT: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      JOBBR_RUNTIME_SERVICE_ACCOUNT: ${{ vars.JOBBR_RUNTIME_SERVICE_ACCOUNT }}
+      JOBBR_ARTIFACT_REPOSITORY: ${{ vars.JOBBR_ARTIFACT_REPOSITORY }}
+      JOBBR_DATABASE_SECRET_REF: ${{ vars.JOBBR_DATABASE_SECRET_REF }}
+      JOBBR_API_TOKEN_SECRET_REF: ${{ vars.JOBBR_API_TOKEN_SECRET_REF }}
+      JOBBR_AUTH_STORE_SECRET_REF: ${{ vars.JOBBR_AUTH_STORE_SECRET_REF }}
+      VERIFIED_IMAGE: ${{ needs.verify.outputs.image }}
+      VERIFIED_DIGEST: ${{ needs.verify.outputs.digest }}
+      SOURCE_COMMIT: ${{ needs.verify.outputs.source_commit }}
+      SKOPEO_IMAGE: quay.io/skopeo/stable@sha256:249b92db7297e5c801e19172dbb3b56fde88094a49740a5ededac8c2958bf2c0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate reviewed production configuration before Google auth
+        run: |
+          python - <<'PY'
+          import os, re
+          rules = {
+              "GITHUB_RUN_ID": r"[1-9][0-9]{0,19}",
+              "GITHUB_RUN_ATTEMPT": r"[1-9][0-9]{0,4}",
+              "GCP_WIF_PROVIDER": r"projects/[0-9]+/locations/global/workloadIdentityPools/[a-z0-9-]+/providers/[a-z0-9-]+",
+              "GCP_DEPLOY_SERVICE_ACCOUNT": r"jobbr-deployer@portfolio-383615\.iam\.gserviceaccount\.com",
+              "JOBBR_RUNTIME_SERVICE_ACCOUNT": r"jobbr-runtime@portfolio-383615\.iam\.gserviceaccount\.com",
+              "JOBBR_ARTIFACT_REPOSITORY": r"jobbr",
+              "JOBBR_DATABASE_SECRET_REF": r"jobbr-database-url:[1-9][0-9]*",
+              "JOBBR_API_TOKEN_SECRET_REF": r"jobbr-instance-token:[1-9][0-9]*",
+              "JOBBR_AUTH_STORE_SECRET_REF": r"jobbr-auth-store-key:[1-9][0-9]*",
+          }
+          for name, pattern in rules.items():
+              if not re.fullmatch(pattern, os.environ.get(name, "")):
+                  raise SystemExit("Missing or unreviewed production variable: " + name)
+          PY
+      - name: Pull the pinned registry-copy tool before short-lived Google auth
+        run: docker pull "$SKOPEO_IMAGE"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: portfolio-383615
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          project_id: portfolio-383615
+          version: ">= 390.0.0"
+      - name: Verify existing dedicated resources and enabled pinned secret versions
+        run: |
+          python - <<'PY'
+          import json, os, subprocess
+          project, region = os.environ["GCP_PROJECT"], os.environ["GCP_REGION"]
+          def query(args):
+              result = subprocess.run(["gcloud", *args, "--project=" + project, "--quiet"],
+                                      capture_output=True, text=True, timeout=60)
+              if result.returncode:
+                  raise SystemExit("Required existing Jobbr resource is unavailable; no resource is created.")
+              return result.stdout.strip()
+          service = json.loads(query(["run", "services", "describe", "jobbr", "--region=" + region, "--format=json"]))
+          containers = service.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+          if len(containers) != 1:
+              raise SystemExit("Expected an existing single-container Jobbr service.")
+          values = containers[0].get("env", [])
+          names = [entry.get("name") for entry in values]
+          if len(names) != len(set(names)):
+              raise SystemExit("Existing service has ambiguous environment settings.")
+          environment = {entry.get("name"): entry.get("value") for entry in values}
+          expected = {"JOBBR_PRIVATE_INSTANCE": "true", "JOBBR_SEED_DEMO": "false", "JOBBR_OPENAI_AUTH_ENABLED": "false"}
+          if any(environment.get(name) != value for name, value in expected.items()):
+              raise SystemExit("Existing service is not explicitly in reviewed private token mode; refusing authentication conversion.")
+          probe = containers[0].get("startupProbe", {}).get("httpGet", {})
+          if probe.get("path") != "/healthz" or probe.get("port") != 8000:
+              raise SystemExit("Existing Jobbr service must have an HTTP /healthz startup probe on port 8000.")
+          query(["iam", "service-accounts", "describe", os.environ["JOBBR_RUNTIME_SERVICE_ACCOUNT"], "--format=value(email)"])
+          sql = json.loads(query(["sql", "instances", "describe", "jobbr-pg", "--format=json(state,connectionName)"]))
+          if sql.get("state") != "RUNNABLE" or sql.get("connectionName") != "portfolio-383615:us-central1:jobbr-pg":
+              raise SystemExit("Dedicated Jobbr PostgreSQL instance is not ready.")
+          repository = json.loads(query(["artifacts", "repositories", "describe", "jobbr", "--location=" + region,
+                                         "--format=json(format,mode)"]))
+          if repository.get("format") != "DOCKER" or repository.get("mode") != "STANDARD_REPOSITORY":
+              raise SystemExit("Dedicated Jobbr image repository is not supported.")
+          for name in ("JOBBR_DATABASE_SECRET_REF", "JOBBR_API_TOKEN_SECRET_REF", "JOBBR_AUTH_STORE_SECRET_REF"):
+              secret, version = os.environ[name].split(":")
+              if query(["secrets", "versions", "describe", version, "--secret=" + secret, "--format=value(state)"]) != "ENABLED":
+                  raise SystemExit("A pinned Jobbr secret version is unavailable or disabled.")
+          PY
+      - name: Mirror the verified image without changing its digest
+        id: mirror
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import base64, json, os, pathlib, subprocess, tempfile
+          destination = "us-central1-docker.pkg.dev/portfolio-383615/jobbr/jobbr"
+          source, digest = os.environ["VERIFIED_IMAGE"], os.environ["VERIFIED_DIGEST"]
+          with tempfile.TemporaryDirectory(dir=os.environ["RUNNER_TEMP"], prefix="jobbr-mirror-") as folder:
+              root = pathlib.Path(folder)
+              token = subprocess.run(["gcloud", "auth", "print-access-token"], capture_output=True,
+                                     text=True, timeout=60)
+              if token.returncode:
+                  raise SystemExit("Could not obtain short-lived registry credential.")
+              def credential(username, password):
+                  return {"auth": base64.b64encode((username + ":" + password).encode()).decode()}
+              credentials = {"auths": {
+                  "ghcr.io": credential(os.environ["GITHUB_ACTOR"], os.environ["GH_TOKEN"]),
+                  "us-central1-docker.pkg.dev": credential("oauth2accesstoken", token.stdout.strip()),
+              }}
+              authfile = root / "auth.json"
+              authfile.write_text(json.dumps(credentials)); authfile.chmod(0o600)
+              def skopeo(args):
+                  result = subprocess.run([
+                      "docker", "run", "--rm", "--read-only", "--cap-drop", "ALL",
+                      "--security-opt", "no-new-privileges", "--tmpfs", "/tmp",
+                      "--mount", "type=bind,src=" + folder + ",dst=/release",
+                      os.environ["SKOPEO_IMAGE"], *args,
+                  ], capture_output=True, text=True, timeout=600)
+                  if result.returncode:
+                      raise SystemExit("Registry mirror verification failed; no service deployment performed.")
+                  return result.stdout.strip()
+              skopeo(["copy", "--all", "--preserve-digests", "--authfile", "/release/auth.json",
+                      "--digestfile", "/release/digest", "docker://" + source,
+                      "docker://" + destination + ":release-" + os.environ["SOURCE_COMMIT"]])
+              if (root / "digest").read_text().strip() != digest:
+                  raise SystemExit("Copied image digest changed; refusing deployment.")
+              import hashlib
+              # Skopeo writes raw manifest bytes without framing; hash binary output unchanged.
+              verify = subprocess.run([
+                  "docker", "run", "--rm", "--read-only", "--cap-drop", "ALL",
+                  "--security-opt", "no-new-privileges", "--tmpfs", "/tmp",
+                  "--mount", "type=bind,src=" + folder + ",dst=/release,readonly",
+                  os.environ["SKOPEO_IMAGE"], "inspect", "--raw", "--authfile", "/release/auth.json",
+                  "docker://" + destination + "@" + digest,
+              ], capture_output=True, timeout=120)
+              if verify.returncode or "sha256:" + hashlib.sha256(verify.stdout).hexdigest() != digest:
+                  raise SystemExit("Artifact Registry manifest does not match the verified GHCR digest.")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("image=" + destination + "@" + digest + "\n")
+          PY
+      - name: Update only the existing Jobbr service with pinned image and secret references
+        env:
+          DEPLOY_IMAGE: ${{ steps.mirror.outputs.image }}
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess
+          run_id, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
+          if not re.fullmatch(r"[1-9][0-9]{0,19}", run_id) or not re.fullmatch(r"[1-9][0-9]{0,4}", attempt):
+              raise SystemExit("Invalid release revision identity.")
+          suffix = "release-" + run_id + "-" + attempt
+          target_revision = "jobbr-" + suffix
+          secrets = ",".join([
+              "JOBBR_DATABASE_URL=" + os.environ["JOBBR_DATABASE_SECRET_REF"],
+              "JOBBR_API_TOKEN=" + os.environ["JOBBR_API_TOKEN_SECRET_REF"],
+              "JOBBR_OPENAI_STORE_KEY=" + os.environ["JOBBR_AUTH_STORE_SECRET_REF"],
+          ])
+          result = subprocess.run([
+              "gcloud", "run", "services", "update", "jobbr", "--project=portfolio-383615", "--region=us-central1",
+              "--image=" + os.environ["DEPLOY_IMAGE"], "--revision-suffix=" + suffix,
+              "--service-account=" + os.environ["JOBBR_RUNTIME_SERVICE_ACCOUNT"],
+              "--execution-environment=gen2", "--set-cloudsql-instances=portfolio-383615:us-central1:jobbr-pg",
+              "--update-secrets=" + secrets,
+              "--update-env-vars=JOBBR_PRIVATE_INSTANCE=true,JOBBR_SEED_DEMO=false,JOBBR_OPENAI_AUTH_ENABLED=false",
+              "--port=8000", "--max-instances=1", "--min-instances=0", "--concurrency=8",
+              "--timeout=120", "--cpu=1", "--memory=512Mi", "--no-traffic", "--deploy-health-check", "--quiet",
+              "--format=value(status.latestReadyRevisionName)",
+          ], capture_output=True, text=True, timeout=600)
+          if result.returncode:
+              raise SystemExit("Jobbr deployment failed; inspect Cloud Run status without exposing secrets.")
+          revision = result.stdout.strip()
+          if revision != target_revision:
+              raise SystemExit("The exact release revision was not returned ready; traffic is unchanged.")
+          checked = subprocess.run([
+              "gcloud", "run", "revisions", "describe", revision,
+              "--project=portfolio-383615", "--region=us-central1", "--format=json",
+          ], capture_output=True, text=True, timeout=60)
+          if checked.returncode:
+              raise SystemExit("Exact release revision could not be inspected; traffic is unchanged.")
+          actual = json.loads(checked.stdout)
+          specification = actual.get("spec", {})
+          containers = specification.get("containers", [])
+          ready = any(condition.get("type") == "Ready" and condition.get("status") == "True"
+                      for condition in actual.get("status", {}).get("conditions", []))
+          if (actual.get("metadata", {}).get("name") != target_revision or not ready
+                  or specification.get("serviceAccountName") != os.environ["JOBBR_RUNTIME_SERVICE_ACCOUNT"]
+                  or actual.get("metadata", {}).get("annotations", {}).get("run.googleapis.com/cloudsql-instances") != "portfolio-383615:us-central1:jobbr-pg"
+                  or len(containers) != 1 or containers[0].get("image") != os.environ["DEPLOY_IMAGE"]):
+              raise SystemExit("Release revision readiness, image or identity differs from reviewed configuration; traffic is unchanged.")
+          entries = containers[0].get("env", [])
+          names = [entry.get("name") for entry in entries]
+          if len(names) != len(set(names)):
+              raise SystemExit("Revision environment is ambiguous; traffic is unchanged.")
+          environment = {entry.get("name"): entry for entry in entries}
+          for name, value in {"JOBBR_PRIVATE_INSTANCE": "true", "JOBBR_SEED_DEMO": "false", "JOBBR_OPENAI_AUTH_ENABLED": "false"}.items():
+              if environment.get(name, {}).get("value") != value:
+                  raise SystemExit("Revision authentication mode differs from reviewed token mode; traffic is unchanged.")
+          for variable, reference in {
+              "JOBBR_DATABASE_URL": os.environ["JOBBR_DATABASE_SECRET_REF"],
+              "JOBBR_API_TOKEN": os.environ["JOBBR_API_TOKEN_SECRET_REF"],
+              "JOBBR_OPENAI_STORE_KEY": os.environ["JOBBR_AUTH_STORE_SECRET_REF"],
+          }.items():
+              name, version = reference.split(":")
+              entry = environment.get(variable, {})
+              secret = entry.get("valueFrom", {}).get("secretKeyRef", {})
+              if "value" in entry or secret.get("name") != name or str(secret.get("key", "")) != version:
+                  raise SystemExit("Revision secret references differ from reviewed numeric versions; traffic is unchanged.")
+          probe = containers[0].get("startupProbe", {}).get("httpGet", {})
+          if probe.get("path") != "/healthz" or probe.get("port") != 8000:
+              raise SystemExit("Revision HTTP health startup probe is missing; traffic is unchanged.")
+          promoted = subprocess.run([
+              "gcloud", "run", "services", "update-traffic", "jobbr",
+              "--project=portfolio-383615", "--region=us-central1",
+              "--to-revisions=" + revision + "=100", "--quiet",
+          ], capture_output=True, text=True, timeout=120)
+          if promoted.returncode:
+              raise SystemExit("Verified revision is ready but traffic promotion failed; inspect service status.")
+          print("Existing Jobbr service now routes to the verified ready revision with pinned secrets.")
+          PY
