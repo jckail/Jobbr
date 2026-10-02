@@ -322,8 +322,37 @@ The combined gate at `8e6ff0e` passed 558 backend tests with PostgreSQL
 verification and all 12 offline release methods. Web lint passed; TypeScript
 caught a possibly undefined unique saved-job ID. The lookup now explicitly
 checks that ID before linking; focused TypeScript and component ESLint pass.
-The corrected full gate, extension step, Docker and rendered UI acceptance
-remain required. No push or deployment occurred from this failed gate.
+The corrected full gate passed at `ad6a874`: 558 backend tests with live
+PostgreSQL (one intentional skip), all 12 offline release methods, 18 extension
+tests, locked dependencies, Ruff/format/strict mypy and web lint/types/build.
+That exact head is pushed; hosted CI run 37054320524 passed secrets, backend,
+web, extension and image-test. Image publication was skipped; PR1 remains draft.
+This qualifies the source, not the full production deployment.
+
+The exact local Docker image subsequently built successfully. Disposable QA
+stopped before restore/chown because Docker Desktop rewrote the backup bind
+path. The never-started owned restore container and its empty volume were
+removed with reviewed identity checks; logs and image remain. Reviewed
+fixture-only acceptance will reuse the immutable image and a fingerprinted
+backup copy in a new owned container, with no host backup bind. Runtime/browser,
+real OIDC/extension/provider and cloud/routing qualification remain open.
 AgentMon is now available; root registered its native identity and retained
 sole Jobbr verification ownership. Historical availability gaps above remain
 observations from their respective checkpoints.
+
+## Isolated discovery usability audit
+
+The existing team identified two source defects: Greenhouse reports unknown
+remote policy, so its remote-only filter hid all results; changing a board or
+provider retained the previous employer override. The isolated UX increment
+disables and explains unsupported Greenhouse remote filtering, limits that
+request filter to Lever, and clears employer overrides when board context
+changes. Five component-handler regressions and focused component/test ESLint
+pass using mocked state and API calls. These do not prove rendered DOM behavior.
+Browser acceptance and the mandatory gate for this new source remain pending.
+The frozen `ad6a874` QA checkout is unchanged.
+
+Cloud Run guidance now reflects the implemented persistent DatabaseAuthStore.
+Actual registration, callback/owner binding, stable shared configuration and
+cross-replica production acceptance remain required. JCK-168 tracks full Jobbr
+delivery; separate Dot MCP work and other-owner cloud helpers are preserved.

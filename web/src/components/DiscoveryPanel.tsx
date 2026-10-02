@@ -26,7 +26,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
     setSearching(true); setError(""); setSnapshot(null);
     try {
       const [result, jobs] = await Promise.all([
-        api.discover(provider, board.trim(), query.trim(), remote ? "remote" : ""),
+        api.discover(provider, board.trim(), query.trim(), provider === "lever" && remote ? "remote" : ""),
         api.jobs(),
       ]);
       const linked: Record<string, number> = {};
@@ -74,13 +74,13 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
       <form onSubmit={search} className="stack">
         <div className="grid2">
           <label className="field">Career board provider
-            <select value={provider} disabled={searching || saving !== null} onChange={(event) => { setProvider(event.target.value as "greenhouse" | "lever"); setSnapshot(null); }}>
+            <select value={provider} disabled={searching || saving !== null} onChange={(event) => { setProvider(event.target.value as "greenhouse" | "lever"); setRemote(false); setCompany(""); setError(""); setSnapshot(null); }}>
               <option value="greenhouse">Greenhouse</option><option value="lever">Lever</option>
             </select>
           </label>
           <label className="field">Board name
             <input value={board} required maxLength={80} pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,79}" autoComplete="off" disabled={searching || saving !== null}
-              placeholder="Company’s board token, e.g. acme" onChange={(event) => { setBoard(event.target.value); setSnapshot(null); }} />
+              placeholder="Company’s board token, e.g. acme" onChange={(event) => { setBoard(event.target.value); setCompany(""); setError(""); setSnapshot(null); }} />
           </label>
           <label className="field">Hiring company name
             <input value={company} maxLength={200} disabled={searching || saving !== null} placeholder="Required when the board omits it" onChange={(event) => setCompany(event.target.value)} />
@@ -90,9 +90,10 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
           </label>
         </div>
         <div className="discovery-actions">
-          <label><input type="checkbox" checked={remote} disabled={searching || saving !== null} onChange={(event) => setRemote(event.target.checked)} /> Remote postings only</label>
+          <label><input type="checkbox" checked={provider === "lever" && remote} disabled={provider !== "lever" || searching || saving !== null} aria-describedby={provider === "greenhouse" ? "discovery-remote-help" : undefined} onChange={(event) => setRemote(event.target.checked)} /> Remote postings only</label>
           <button className="btn primary" disabled={searching || saving !== null}>{searching ? "Checking career board…" : "Find openings"}</button>
         </div>
+        {provider === "greenhouse" && <p className="muted" id="discovery-remote-help">Remote filtering uses Lever’s workplace policy. For Greenhouse, review each posting’s location and source.</p>}
       </form>
       {error && <p className="form-error" role="alert">{error}</p>}
       {snapshot && <div className="discovery-results" aria-live="polite">

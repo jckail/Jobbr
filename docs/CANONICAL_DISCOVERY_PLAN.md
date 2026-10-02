@@ -52,9 +52,14 @@ one job, preserved related records. Cover stale-worker fencing, changed input,
 legacy ambiguity, cancellation and backup compatibility. Freeze the preceding
 schema for installed backups before adding the next migration.
 
-Focused verification passed 25 identity/repository cases, 34 migration/backup
-cases, and four root-selected SQLite orchestration cases. PostgreSQL and the
-mandatory combined gate remain pending. No canonical source has been published.
+Initial focused verification passed 25 identity/repository cases, 34 migration/backup
+cases, and four root-selected SQLite orchestration cases. The corrected combined
+gate at `ad6a874` subsequently passed 558 backend tests with live PostgreSQL
+(one intentional skip), web lint/types/build, 18 extension tests and 12 offline
+release methods. That exact head is published on the draft PR branch; hosted CI
+run 37054320524 passed, including image-test. Main remains unmerged, image
+publication was skipped, and live runtime/browser and production acceptance
+remain unqualified.
 
 Discovery freshness is a separate remaining task. An identity or timestamp alone
 does not prove that a posting is still available.
@@ -64,7 +69,8 @@ does not prove that a posting is still available.
 Source review found that current discovery snapshots expose `fetched_at` and
 `truncated`, while failures are fetch errors rather than posting availability.
 Filtered searches, the first-100 window and rejected links cannot prove a saved
-posting disappeared. An explicit transient observation is now implemented; combined verification and browser acceptance remain pending.
+posting disappeared. An explicit transient observation is implemented and passed the combined source
+gate at `ad6a874`; live availability/browser acceptance remains unqualified.
 
 A bounded next step is a private, explicit `Check availability` action on a saved
 job. Resolve the identity from server-owned mapping or a recognized saved URL,
@@ -102,8 +108,8 @@ Vendor semantics were checked against the official
 and [Lever postings API](https://github.com/lever/postings-api#get-a-list-of-job-postings).
 Focused checks passed 59 discovery cases, seven API cases with one PostgreSQL
 skip, and strict mypy across the four affected backend modules. The UI has
-explicit checking, retry and timestamp states; web/full gate and real browser
-acceptance remain unverified. Source-independent Graphify results lacked Jobbr
+explicit checking, retry and timestamp states. Web/full source checks subsequently
+passed at `ad6a874`; real browser acceptance remains unverified. Source-independent Graphify results lacked Jobbr
 coverage; live source and dependency-free Codemogger text retrieval were used.
 
 
@@ -114,5 +120,5 @@ in batches. Existing unmapped legacy rows can expose a recognized URL identity
 without creating mappings. Discovery compares exact URL or the complete
 provider/board/posting tuple, preserving case and first URL. Multiple job IDs
 matching a posting produce a review action; no old rows are merged or silently
-selected. Generic URLs retain exact matching. Combined UI/browser verification
-is still pending.
+selected. Generic URLs retain exact matching. Combined source verification passed
+at `ad6a874`; rendered UI/browser verification remains pending.

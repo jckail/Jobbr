@@ -97,14 +97,18 @@ an unreviewed object-storage/FUSE mount.
 [Container runtime contract](https://cloud.google.com/run/docs/container-contract),
 [database procedures](DATABASE.md).
 
-**Reliable ChatGPT OIDC deployment is currently blocked by in-memory state.**
+ChatGPT OIDC transactions and sessions use the persistent `DatabaseAuthStore`
+in the application's shared database, with atomic one-time transaction
+consumption and shared session revocation. `AuthService` selects this store;
+there is no in-memory session-store deployment prerequisite remaining.
 Cloud Run can temporarily exceed maximum instances during maintenance/traffic
 spikes and overlap revisions at deployment. Setting maximum instances to one or
-using sticky sessions does not provide a single-process guarantee. Add a shared
-TTL store supporting atomic, one-time transaction consumption and session
-revocation before this auth mode is accepted on Cloud Run. A separately accepted
-token-only interim deployment avoids those OIDC state requirements but does not
-complete Sign in with ChatGPT. Minimum instances also incur idle cost and do not
+using sticky sessions does not provide a single-process guarantee. All replicas
+must use the same durable database and reviewed store-key configuration. Real
+website-client registration, the exact HTTPS callback, verified owner binding,
+and cross-replica login/revocation acceptance remain unqualified. A separately
+accepted token-only interim deployment does not complete Sign in with ChatGPT.
+Minimum instances also incur idle cost and do not
 prevent replacement. [Scaling guarantees](https://cloud.google.com/run/docs/about-instance-autoscaling),
 [auth boundaries](AUTH.md).
 
