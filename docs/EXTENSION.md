@@ -1,49 +1,58 @@
 # Chrome posting capture
 
-The `extension/` directory contains the Manifest V3 Jobbr extension. It captures only after you click **Capture current tab**, then lets you edit the URL and visible page text. **Save to Jobbr** sends the reviewed preview using the real `POST /jobbr/api/jobs` schema: `{url, text?}`. There are no background scripts, automatic captures, remote scripts, analytics, or scheduled scraping.
+`extension/` contains the Manifest V3 Jobbr extension. Capture reads the selected tab only after a click and creates an editable preview. Save sends the reviewed posting to the selected Jobbr destination. There are no background workers, automatic captures, polling, refresh credentials, remote scripts or analytics.
 
-## Install
+## Install and destinations
 
-1. Use Chrome 109 or newer. Open `chrome://extensions` and enable **Developer mode**.
-2. Choose **Load unpacked** and select this repository’s `extension/` directory (not `mini_extension/`).
-3. Pin Jobbr from Chrome’s extensions menu, open a job posting, and click its icon.
-4. Select **Local** (`http://localhost:8000/jobbr`) or **Production** (`https://jckail.com/jobbr`). Start the local backend before using Local.
-5. Click **Capture current tab**. Review the URL and editable posting text; remove unrelated or personal information. Then click **Save to Jobbr**. When AI extraction is enabled, confirm the disclosed provider, model, posting-text transfer and possible API charges. Canceling sends no posting. Keep the popup open until the result appears.
+1. Use Chrome 109 or newer. In `chrome://extensions`, enable Developer mode and Load unpacked, selecting this repository's `extension/` directory.
+2. Pin Jobbr and select Local (`http://localhost:8000/jobbr`) or Production (`https://jckail.com/jobbr`). Destinations are fixed; an arbitrary server URL cannot be supplied.
+3. For a workspace using browser sign-in, connect using the steps below before capturing a posting. For token mode, enter the instance token under API token. Open local mode needs no token.
+4. On the posting tab, open the popup and choose Capture current tab. Edit the URL and text and remove personal information. Save checks the latest extraction settings and requires confirmation of the provider, model, posting-text transfer and possible API charges when AI is enabled. Canceling sends no posting.
 
-The extension requires no build step. Reload it on `chrome://extensions` after editing files. The legacy `mini_extension/` remains preserved and is not used by this extension.
+There is no build step. Reload the extension after source changes. Reloading, updating or restarting the browser clears its session credentials and pairing verifier. The legacy `mini_extension/` is preserved and is not used here.
 
-## Permissions and data handling
+## Direct private-workspace connection
 
-- `activeTab` and `scripting` allow a one-time read of the current tab following your click. There are no persistent content scripts or broad posting-site host permissions.
-- `storage` persists only your destination selection in local storage. API tokens stay in `chrome.storage.session`, restricted to trusted extension contexts and cleared on browser restart, extension reload/update, or **Forget token**. Tokens are separate for Local and Production; this extension never reads the app’s storage or exports a token to page scripts.
-- Host permissions cover only the two API paths the extension calls, `http://localhost:8000/jobbr/api/*` and `https://jckail.com/jobbr/api/*`; a test fails if they widen. Chrome host patterns cannot restrict a port, but the request implementation and Content Security Policy restrict the local destination to port 8000. The app URLs are fixed constants and cannot be replaced with arbitrary destinations. Requests reject redirects and omit browser cookies.
-- Captured previews stay in the popup’s memory until you save. Closing it discards the preview. The preview contains only the top page’s URL and rendered `document.body.innerText`, at most 60,000 characters. It does not read cookies, network traffic, iframe contents, HTML source, or input values deliberately.
-- URL fragments are removed; query parameters remain visible for review. Do not send URLs or posting text containing access tokens, private messages, applicant data, or other material you do not want stored by the selected Jobbr instance. When AI is enabled, confirmation names the configured provider and model, explains possible API charges (without a dollar estimate), and states that your resume is excluded. A URL-only save can still send the server-fetched posting text to that provider.
-- Every save pins the exact provider, model and enabled state read from the server, including when AI is disabled. If settings change before saving, the server rejects the request with a visible error; the extension does not retry automatically. Choose Save again to check and review the new settings.
+The backend must have working website OIDC and the installed extension ID explicitly enabled in its reviewed non-secret `JOBBR_EXTENSION_ALLOWED_IDS` configuration. The value is a comma-separated list of reviewed 32-character Chrome extension IDs (letters a–p). The default allowlist is empty; a malformed list disables approval. Adding source alone does not enable production connections. Review the ID shown in the popup and `chrome://extensions`; an unpacked extension can have a different ID after moving its directory or loading it in another environment. No provider registration, production configuration or credential change is performed by loading this extension.
 
-## Authentication
+1. Expand Connect a private workspace and click Connect to Jobbr. The popup creates a local random verifier and S256 challenge and opens the selected fixed Jobbr approval page. This step sends no posting and makes no public pairing API request.
+2. Sign in to Jobbr through the existing website flow. Check the destination, extension ID, capture permissions and eight-character comparison code against the popup. Explicitly approve. Website approval requires its HttpOnly owner session, exact website Origin and CSRF token.
+3. Reopen the extension popup and click Finish connection. There is no automatic polling. A single exchange sends the verifier in the request body, never in a URL. The owner-approved pairing is valid for five minutes after approval; local pending details expire after ten minutes from Connect. If either window expires, start a fresh connection.
+4. Return to the posting tab and capture/review it. Save sends directly to `/jobbr/api/extension/captures`, using the short-lived capture credential, exact AI settings pins and a fresh idempotency key. OIDC mode never falls back to the instance API token.
 
-For a token-protected instance, expand **API token** and enter that instance’s `JOBBR_API_TOKEN`. Saves use `X-Jobbr-Token`. Never embed a token in the extension source, URL, or manifest. The token is transmitted to the selected approved instance only when saving.
+The credential grants `jobs:capture` for at most fifteen minutes, up to five captures and one active capture at a time. It cannot read the profile, resume, notes, existing job details or other private workspace data. The save receipt contains only a job ID. Open Jobbr normally to review the saved job; its website session stays separate. Signing out of the approving website session, expiry or owner revocation prevents new captures. Revocation cannot undo a request already authorized and running.
 
-Browser sign-in (OIDC) instances require authenticated HttpOnly sessions and CSRF protection with the application’s web origin. This extension checks `/jobbr/api/config` before saving and explains the limitation when `auth_enabled` is true. It does not impersonate that origin or bypass those protections. **Saving to an OIDC-enabled instance is currently unsupported**; use the signed-in Jobbr app’s paste/import flow. A separate, reviewed extension authorization flow is required to support that mode. The extension supports the backend’s token mode and open local mode; it does not promise that production accepts tokens if production uses OIDC.
+This is Jobbr capture authorization based on the website's OIDC owner identity. It is not an OpenAI-issued extension OAuth token and does not reuse or export the website session. The existing registered website client/callback is still required; no extension-specific provider callback or `chrome.identity` permission is introduced. Extension IDs and Origin checks restrict the reviewed browser client but are not cryptographic proof against a client outside the browser. Authority comes from explicit owner approval, the verifier-protected exchange and possession of the scoped credential.
 
-## Limits and troubleshooting
+## Disconnect and uncertainty
 
-- Chrome internal pages, extension pages, the Chrome Web Store, and other restricted tabs cannot be captured. Use the Jobbr app’s paste flow instead.
-- Navigation menus and other visible page text can appear in the preview. Remove them before saving. Pages inside frames and closed shadow roots may be incomplete. Scroll or reveal the posting first if its text loads lazily.
-- Text is capped at 60,000 characters, with a visible truncation message. Clearing it saves a URL-only payload, allowing Jobbr’s server to fetch the posting; login-protected sites generally need captured text.
-- Capture does not save a screenshot or attachments. It captures the tab at the moment you click, not subsequent page changes.
-- Closing the popup during a request can interrupt confirmation even if Jobbr saved the posting. A timeout or connection failure can also leave an unknown outcome: check Jobbr before retrying. The extension times out after 90 seconds.
-- A locked message means the instance requires authentication. Check the selected destination and token; use the signed-in app for OIDC instances. A network error can mean the local server is stopped, the approved deployment path is unavailable, or a proxy blocked the request.
+Disconnect / forget pairing removes the selected destination's local pairing and capture credential, then attempts to revoke that credential on the server. If revocation cannot be confirmed, revoke it in Jobbr or wait for expiry. Forgetting an unfinished local pairing does not cancel an approval already made in Jobbr. The website can revoke that access; an unexchanged approval expires after five minutes.
 
-## Verification
+Each Finish or Save action makes one request sequence, with no automatic retry. If the popup closes, a response is invalid, or a connection times out, the operation may have completed. Check Jobbr before saving again. A repeated manual Save creates a new request identity and is not a recovery retry; it may perform extraction again. Server idempotency protects replay of the same identity, not a deliberate new Save. If exchange completed but its credential response was lost, revoke the grant in Jobbr and connect again. No refresh credential or website cookie is used to recover it.
 
-Run from the repository root:
+Stale AI settings, expired approval, revocation, capture limits and overlapping captures fail visibly. Changing provider/model/enabled settings requires a new Save and disclosure review. Clearing posting text creates a URL-only payload; the server may fetch that page and send its posting text to the selected AI provider after confirmation. Your resume is excluded from extraction, and no dollar cost estimate is promised.
+
+## Permissions and privacy
+
+- `activeTab` and `scripting` read the current top-level tab following Capture. There are no persistent content scripts or broad posting-site permissions. The injected function receives only the text limit; no credential, pairing verifier or API token is passed into page JavaScript.
+- `storage` persists only the destination selection in local storage. Instance tokens, pairing verifier/challenge and scoped credentials are separated by destination in trusted `chrome.storage.session`. They are never written to local/sync storage, page storage, URLs or logs. Storage initialization failures block connection and saving.
+- The manifest declares `http://localhost:8000/jobbr/api/*` and `https://jckail.com/jobbr/api/*`, with a regression test guarding those declarations. Chrome [ignores the path component for host permissions](https://developer.chrome.com/docs/extensions/develop/concepts/match-patterns), so this is not browser-enforced isolation from other paths on those hosts. Fixed destinations and endpoint allowlists restrict actual requests, and CSP restricts the connection origins. All API calls omit browser cookies and reject redirects. Captures use bearer authorization only on their dedicated endpoint. Configuration reads include neither posting text nor credentials.
+- Opening the reviewed approval tab requires no additional `tabs` permission; [Chrome documents tab creation without it](https://developer.chrome.com/docs/extensions/reference/api/tabs). No `cookies`, `identity` or `<all_urls>` permission is added.
+- Captured previews remain only in popup memory and disappear when it closes. Connect before capture so opening the approval tab does not discard an unsaved preview. Capture reads rendered `document.body.innerText`, capped at 60,000 characters, plus the page URL. It does not deliberately read input values, cookies, network traffic, HTML source or iframe contents.
+- URL fragments are removed, while query parameters remain visible for review. Remove sensitive query parameters and unrelated page text before saving. No screenshot or attachments are captured.
+
+## Verification and release limits
+
+Root owns verification. Focused source checks can use:
 
 ```sh
-node --check extension/popup.mjs
 node --check extension/core.mjs
-node --test extension/core.test.mjs
+node --check extension/popup.mjs
+node --test extension/*.test.mjs
 ```
 
-Core tests verify destination restrictions, dangerous posting URLs, payload bounds, exact API routing, cookie omission, redirect rejection, and error handling. Chrome UI checks require loading the unpacked extension: verify a normal posting capture, preview edits, a restricted page error, local save, wrong-token rejection, destination switching, and token clearing after extension reload. No end-to-end browser result is claimed by the Node checks.
+The tests use synthetic credentials and mocked requests. They cover canonical destinations and approval routes, local S256 pairing/comparison codes, destination-separated expiry, single Finish with no polling, exact capture scope, secret-free errors, explicit paid consent, disabled/enabled AI pins, idempotency headers, cookie omission, redirect rejection, disconnect and unknown outcomes. They do not establish a working Chrome or provider connection.
+
+Real Chrome verification remains required before declaring this path ready: load the installed ID, review and enable that ID through an authorized configuration change, check the actual extension Origin/CORS behavior, complete website approval, reopen and Finish, save a synthetic posting, and verify logout/revocation/expiry/limits and destination separation. Registered website OIDC and production routing must already be available. This source change performs none of those live operations and does not establish production readiness.
+
+Chrome internal pages, the Chrome Web Store and other restricted tabs cannot be captured. Navigation text, lazy-loaded content, closed shadow roots and framed postings may produce incomplete previews. Review the text or paste the posting in Jobbr instead.

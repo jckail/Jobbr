@@ -82,6 +82,30 @@ export interface AuthSession {
   csrf_token: string | null;
   login_url: string | null;
 }
+export interface ExtensionPairing {
+  request_id: string;
+  challenge: string;
+  extension_id: string;
+  destination: string;
+  comparison_code: string;
+  expires_at: string | null;
+  status: "pending" | "approved";
+  scope: "jobs:capture";
+  capture_limit: number;
+  token_ttl_seconds: number;
+  ai_provider: AIProvider;
+  ai_model: string;
+  llm_enabled: boolean;
+}
+export interface ExtensionGrant {
+  grant_id: string;
+  extension_id: string;
+  destination: string;
+  expires_at: string;
+  captures_remaining: number;
+  busy: boolean;
+  revoked: boolean;
+}
 export type CareerKind = "cover_letter" | "interview_prep";
 export interface CareerResult {
   kind: CareerKind;

@@ -21,7 +21,7 @@ def version() -> str:
 
 def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
     db.init_db()
-    assert version() == "0005_tailoring"
+    assert version() == "0006_extension_capture"
     assert set(inspect(db.get_engine()).get_table_names()) == {
         "alembic_version",
         "company",
@@ -39,9 +39,13 @@ def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
         "profilerevisionhead",
         "tailoringreceipt",
         "savedtailoringdraft",
+        "capturepairing",
+        "capturegrant",
+        "capturereceipt",
+        "capturethrottle",
     }
     db.init_db()
-    assert version() == "0005_tailoring"
+    assert version() == "0006_extension_capture"
 
 
 def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> None:
@@ -56,7 +60,7 @@ def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> N
         company_id, job_id = company.id, job.id
     db.init_db()
     db.init_db()
-    assert version() == "0005_tailoring"
+    assert version() == "0006_extension_capture"
     with Session(db.get_engine()) as session:
         assert session.get(Company, company_id).name == "Preserved company"
         assert session.get(Job, job_id).skills == ["Python"]

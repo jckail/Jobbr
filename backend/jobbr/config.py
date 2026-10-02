@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     static_dir: str = "../web/dist"
     api_token: str | None = None  # if set, mutating requests need X-Jobbr-Token
     private_instance: bool = False
+    extension_allowed_ids: str = ""  # reviewed Chrome IDs; empty disables owner approval
     seed_demo: bool = False  # load demo data when the database is empty
 
     openai_api_key: str | None = Field(

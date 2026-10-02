@@ -1,4 +1,4 @@
-import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, SavedTailoringDraft, Stage, Stats, TailoringDraft, TailoringResult } from "./types";
+import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, ExtensionGrant, ExtensionPairing, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, SavedTailoringDraft, Stage, Stats, TailoringDraft, TailoringResult } from "./types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const TOKEN_KEY = "jobbr.token";
@@ -80,6 +80,11 @@ export const api = {
     return session;
   },
   logout: async () => { await req<void>("/auth/logout", { method: "POST" }); clearSession(); },
+  extensionPairing: (extensionId: string, challenge: string) => req<ExtensionPairing>(`/extension/pairings/${encodeURIComponent(extensionId)}/${encodeURIComponent(challenge)}`),
+  approveExtensionPairing: (request: ExtensionPairing) =>
+    req<{ request_id: string; status: "approved"; expires_at: string }>("/extension/pairings", body("POST", { extension_id: request.extension_id, challenge: request.challenge, challenge_method: "S256", ai_provider: request.ai_provider, ai_model: request.ai_model, llm_enabled: request.llm_enabled })),
+  extensionGrants: () => req<ExtensionGrant[]>("/extension/grants"),
+  revokeExtensionGrant: (grantId: string) => req<void>(`/extension/grants/${encodeURIComponent(grantId)}/revoke`, { method: "POST" }),
   career: (id: number, kind: CareerKind, signal?: AbortSignal, config?: Config) =>
     req<CareerResult>(`/jobs/${id}/career/${kind}`, { method: "POST", signal, headers: aiHeaders(config) }),
   careerDrafts: (id: number) => req<SavedCareerDraft[]>(`/jobs/${id}/career/drafts`),

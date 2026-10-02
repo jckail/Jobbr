@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 
 from .career import run_structured
-from .config import get_settings
+from .config import Settings, get_settings
 from .models import ExtractMethod
 from .parsing import heuristic_job, jsonld_job
 from .schemas import JobExtraction
@@ -33,8 +33,11 @@ class Result:
     error: str | None = None
 
 
-def llm_extract(text: str, hint: str | None = None) -> tuple[JobExtraction, int, int]:
-    settings = get_settings()
+def llm_extract(
+    text: str, hint: str | None = None, *, settings: Settings | None = None
+) -> tuple[JobExtraction, int, int]:
+    pinned = settings is not None
+    settings = settings if settings is not None else get_settings()
     bounded_hint = hint[: min(200, settings.max_input_chars // 8)] if hint else None
     posting = text[: settings.max_input_chars]
 
@@ -54,13 +57,23 @@ def llm_extract(text: str, hint: str | None = None) -> tuple[JobExtraction, int,
             else:
                 high = middle - 1
         content = pack(posting[:low])
-    return asyncio.run(run_structured("Jobbr job extractor", SYSTEM, content, JobExtraction))
+    return asyncio.run(
+        run_structured("Jobbr job extractor", SYSTEM, content, JobExtraction, settings=settings)
+        if pinned
+        else run_structured("Jobbr job extractor", SYSTEM, content, JobExtraction)
+    )
 
 
 def extract(
-    text: str, html: str | None = None, title: str | None = None, company: str | None = None
+    text: str,
+    html: str | None = None,
+    title: str | None = None,
+    company: str | None = None,
+    *,
+    settings: Settings | None = None,
 ) -> Result:
-    settings = get_settings()
+    pinned = settings is not None
+    settings = settings if settings is not None else get_settings()
     start = time.monotonic()
     error = None
     try:
@@ -72,8 +85,11 @@ def extract(
     input_tokens = output_tokens = 0
     if data is None and settings.llm_enabled:
         try:
-            data, input_tokens, output_tokens = llm_extract(
-                text, hint=" / ".join(x for x in (company, title) if x) or None
+            hint = " / ".join(x for x in (company, title) if x) or None
+            data, input_tokens, output_tokens = (
+                llm_extract(text, hint=hint, settings=settings)
+                if pinned
+                else llm_extract(text, hint=hint)
             )
             method, model = ExtractMethod.llm, settings.ai_model
         except Exception as exc:

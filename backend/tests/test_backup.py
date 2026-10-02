@@ -12,7 +12,6 @@ from sqlalchemy import text
 
 from jobbr import config, db
 from jobbr.main import create_app
-from migrations.baseline import metadata as initial_schema
 from tests.conftest import API, reset_settings
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "backup.py"
@@ -112,6 +111,10 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
             "profilerevisionhead",
             "tailoringreceipt",
             "savedtailoringdraft",
+            "capturepairing",
+            "capturegrant",
+            "capturereceipt",
+            "capturethrottle",
             "company",
             "job",
             "application",
@@ -240,7 +243,8 @@ def test_publication_race_does_not_replace_concurrent_output(
 
 
 @pytest.mark.parametrize(
-    "revision", ["0001_v2", "0002_saved_drafts", "0003_auth_store", "0004_profile_revisions"]
+    "revision",
+    ["0001_v2", "0002_saved_drafts", "0003_auth_store", "0004_profile_revisions", "0005_tailoring"],
 )
 def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, revision):
     configuration = Config()
@@ -263,7 +267,10 @@ def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, rev
     backup.snapshot(snapshot, restored)
     with sqlite3.connect(snapshot) as original, sqlite3.connect(restored) as copy:
         assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)
-        for table in initial_schema.tables:
+        tables = original.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+        for (table,) in tables:
             assert original.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall() == (
                 copy.execute(f'SELECT * FROM "{table}" ORDER BY 1').fetchall()
             )
@@ -274,6 +281,6 @@ def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, rev
     with sqlite3.connect(restored) as copy, sqlite3.connect(snapshot) as archive:
         assert copy.execute("SELECT name FROM company").fetchone() == ("Historical company",)
         assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0005_tailoring",
+            "0006_extension_capture",
         )
         assert archive.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)

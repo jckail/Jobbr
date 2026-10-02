@@ -8,9 +8,11 @@ interface Props {
   loading: boolean;
   error?: string;
   onRefresh: () => void;
+  loginInNewTab?: boolean;
+  onNavigate?: () => void;
 }
 
-export default function SessionPanel({ config, session, loading, error, onRefresh }: Props) {
+export default function SessionPanel({ config, session, loading, error, onRefresh, loginInNewTab = false, onNavigate }: Props) {
   const [token, setValue] = useState(getToken);
   const [busy, setBusy] = useState(false);
   const [actionError, setError] = useState("");
@@ -45,9 +47,11 @@ export default function SessionPanel({ config, session, loading, error, onRefres
       {session?.authenticated ? <>
         <p>Signed in as <strong>{session.user?.name || session.user?.email || "the instance owner"}</strong>.</p>
         <div className="career-actions"><button className="btn" disabled={busy} onClick={logout}>{busy ? "Signing out…" : "Sign out of Jobbr"}</button><button className="btn" disabled={busy} onClick={onRefresh}>Refresh access</button></div>
+        <a href="#/extension-connect" onClick={onNavigate}>Manage extension capture access</a>
       </> : session?.ready && session.login_url ? <>
         <p>Sign in with the authorized owner’s ChatGPT account to continue.</p>
-        <a className="btn primary" href={session.login_url}>Continue with ChatGPT</a>
+        <a className="btn primary" href={session.login_url} target={loginInNewTab ? "_blank" : undefined} rel={loginInNewTab ? "noopener noreferrer" : undefined}>Continue with ChatGPT{loginInNewTab ? " in a new tab" : ""}</a>
+        {loginInNewTab && <><p className="muted">Keep this approval tab open. Complete sign-in in the new tab, then return here and recheck access.</p><button className="btn" disabled={busy} onClick={onRefresh}>I signed in — recheck access</button></>}
       </> : <>
         <p role="status">{session?.reason || "Sign in with ChatGPT is unavailable for this instance."}</p>
         <p className="muted">The instance owner must complete OpenAI website client registration and server configuration.</p>

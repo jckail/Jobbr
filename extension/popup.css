@@ -31,3 +31,9 @@ summary { cursor: pointer; }
   .secondary:hover { background: #293e5a; }
   #status[data-error="true"] { color: #ff9ca8; }
 }
+
+#private-connect { margin: 14px 0; border: 1px solid #95a7c0; border-radius: 5px; padding: 10px; }
+#private-connect summary { font-weight: 600; }
+#extension-id { overflow-wrap: anywhere; user-select: all; }
+#connection-status { font-size: 12px; }
+#approval-link { display: block; margin-bottom: 10px; color: inherit; }

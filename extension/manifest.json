@@ -1,11 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Jobbr — save a posting",
-  "version": "2.0.0",
-  "description": "Preview the current job posting and save it to your Jobbr instance.",
+  "name": "Jobbr \u2014 save a posting",
+  "version": "2.1.0",
+  "description": "Review job postings and save them to Jobbr using local access or approved private capture connections.",
   "minimum_chrome_version": "109",
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://localhost:8000/jobbr/api/*", "https://jckail.com/jobbr/api/*"],
-  "action": { "default_popup": "popup.html", "default_title": "Save a posting to Jobbr" },
-  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://localhost:8000 https://jckail.com" }
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://localhost:8000/jobbr/api/*",
+    "https://jckail.com/jobbr/api/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Save a posting to Jobbr"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src http://localhost:8000 https://jckail.com"
+  }
 }

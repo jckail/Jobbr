@@ -332,7 +332,7 @@ def _ensure_application(s: Session, job: Job) -> None:
     s.add(ApplicationEvent(application_id=pk(app), to_stage=Stage.saved, note="Added"))
 
 
-def ingest(s: Session, body: JobCreate) -> Job:
+def ingest(s: Session, body: JobCreate, *, settings: Settings | None = None) -> Job:
     page = _load_page(body)
     existing = s.exec(select(Job).where(Job.url == page.url)).first() if page.url else None
     if (
@@ -345,7 +345,11 @@ def ingest(s: Session, body: JobCreate) -> Job:
         company = s.get(Company, existing.company_id)
         if company and (body.company is None or body.company.strip() == company.name):
             return existing
-    result = extract(page.text, page.html, body.title, body.company)
+    result = (
+        extract(page.text, page.html, body.title, body.company, settings=settings)
+        if settings is not None
+        else extract(page.text, page.html, body.title, body.company)
+    )
     if existing and result.error:
         # AI failed and only the offline fallback ran: never replace saved details with weaker
         # data. Log the attempt and return the job as it was.

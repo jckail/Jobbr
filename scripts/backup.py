@@ -26,12 +26,13 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.exc import SQLAlchemyError  # noqa: E402
 from sqlmodel import SQLModel  # noqa: E402
 
-from jobbr import auth_models, models  # noqa: E402, F401
+from jobbr import auth_models, capture_models, models  # noqa: E402, F401
 from jobbr.schema import SchemaMismatchError, verify_schema  # noqa: E402
 from migrations.baseline import metadata as initial_schema  # noqa: E402
 from migrations.drafts_baseline import metadata as drafts_schema  # noqa: E402
 from migrations.revisions_baseline import metadata as revisions_schema  # noqa: E402
 from migrations.store_baseline import metadata as store_schema  # noqa: E402
+from migrations.tailoring_baseline import metadata as tailoring_schema  # noqa: E402
 
 BACKUP_TIMEOUT_SECONDS = 60
 
@@ -67,6 +68,7 @@ def verify(path: Path) -> None:
             "0002_saved_drafts": drafts_schema,
             "0003_auth_store": store_schema,
             "0004_profile_revisions": revisions_schema,
+            "0005_tailoring": tailoring_schema,
         }
         if revisions == heads:
             expected = SQLModel.metadata
@@ -78,6 +80,10 @@ def verify(path: Path) -> None:
             "SELECT id FROM authstoreguard"
         ).fetchall() != [(1,)]:
             raise BackupError("Database initialization guard validation failed.")
+        if "capturethrottle" in expected.tables and connection.execute(
+            "SELECT id FROM capturethrottle"
+        ).fetchall() != [(1,)]:
+            raise BackupError("Extension initialization guard validation failed.")
         # Reuse the same read-only connection; never call application startup/init_db here.
         engine = create_engine("sqlite://", creator=lambda: connection)
         try:

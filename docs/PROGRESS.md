@@ -148,3 +148,52 @@ Root's synthetic browser check reached consent-based generation but was interrup
 Resource conditions changed after the earlier queue timeout and source changes settled. Root started one combined mandatory full gate through the shared wrapper, log .local/verify-tailoring-20261002.log, covering the local extension-consent commit and tailoring/auth increments. No unchanged retry was used. Commit/push remain contingent on this gate, with PR1 kept draft and unrelated cloud work preserved.
 
 Combined mandatory gate completed successfully, log .local/verify-tailoring-20261002.log:392backend cases with live disposable PostgreSQL59.11s, seven offline release tests, seven extension cases, Ruff/format66files, strict mypy28sourcefiles, locked Python3.12 sync/export, npm ci (zero known vulnerabilities), web ESLint/TypeScript/production build. The new PostgreSQL test proves A→B during generation→saveA, stale/valid activation and serialized near50capacity. Own PostgreSQL was removed by the verifier trap. Root will publish only these reviewed changes after fetch/fast-forward, preserve unrelated cloud ownership, keep PR1 draft, and verify hosted CI for the resulting SHA. Local Docker still runs verifieddb40e3f until a separately tested upgrade.
+
+## Published tailoring checkpoint
+
+Reviewed extension and tailoring commits ed0479c/8aa6c71 are pushed. Exact head8aa6c711a47f0561639ce85cf4ee187e2bd1f5d3 passed hosted CI37031438171 for backend/web/extension/secrets/image; main-only image publication was skipped as expected. PR1 remains draft with a refreshed description. Mandatory local verification passed392backend cases plus seven release and seven extension tests and required lint/types/build checks.
+
+A fresh consistent0004 snapshot of the running local app is verified at ignored .local/backups/local-upgrade-8aa6c71-20261002/jobbr.db with private permissions. The exact8aa Docker build/acceptance command exited75 before executing because the shared queue was busy; no unchanged retry, QAcontainer/volume creation or local upgrade occurred. The owned local app still runs verifieddb40e3f. Resume the prepared helper only after resource availability changes.
+
+Tailoring shared Graphify refresh was requested once (rootsession71826/log.local/graph-refresh-tailoring-20261002.log); collect its terminal result without launching duplicates. Prior extension refresh completed exit0; Jobbr code coverage remains absent. Installed-extension and full tailoring UI acceptance await the separate path maintenance handoff; synthetic generation succeeded before the shared browser reconnect interrupted save/activation checks. Root's temporary Vite is stopped. The curated ignored tailoring-release-checkpoint-20261002.json contains current evidence and next steps. No liveprovider, credentials, cloud/routing, mainmerge or legacydelete action occurred.
+
+## Direct extension authorization in progress
+
+The tailoring Graphify refresh completed successfully. Jobbr remains outside the
+graph's code coverage, so current source and tests remain authoritative.
+
+The team is implementing direct capture authorization through the existing
+website owner session. The popup creates PKCE locally; a website approval link
+contains only the public extension ID and challenge. Read-only approval details
+create no database state. Only explicit authenticated, CSRF-protected owner
+approval creates a pairing. The default reviewed extension-ID allowlist is empty.
+
+The resulting credential permits five captures for at most fifteen minutes,
+one at a time, with no refresh or private workspace read access. Captures pin
+the approved provider policy and still require per-posting paid-use consent.
+Future reservations fail after logout, revocation or expiry; already reserved
+work may finish and save. These limits are undergoing backend verification and
+independent review, not claimed complete.
+
+Website ESLint and TypeScript checks passed. Extension syntax checks and seventeen
+focused tests passed. Root's configuration, table registration, router and narrow
+CORS wiring passed focused Ruff and format checks. Backend focused checks and the
+combined mandatory gate remain pending; no new authorization source was pushed.
+The shared heavy-check slot is currently occupied by other projects. Real Chrome
+acceptance awaits the other agent's verified installation-path repair handoff.
+
+Design and future acceptance notes are retained in EXTENSION_AUTH_PLAN.md and
+CANONICAL_DISCOVERY_PLAN.md. Agent Hub refused this worktree's checkpoint because
+it has no configured memory scope; a curated local checkpoint was saved instead.
+No provider spending, real credentials, cloud execution, routing changes or
+legacy deletion occurred.
+
+The direct authorization source is now reviewed and frozen. Root's single
+guarded integration run passed (`.local/verify-extension-auth-20261002.log`):
+19 focused SQLite authorization cases; the combined suite then passed 430 cases
+with live disposable PostgreSQL, with one intentional SQLite-only archive skip.
+Seven offline release tests, all seventeen extension tests, Ruff/format across
+74 files, strict mypy across 33 source files, locked dependency/export checks,
+and web lint/types/production build passed. Independent source review's backup
+singleton finding was fixed and its regression passed. No source acceptance
+claim substitutes for pending real Chrome, registered sign-in or paid-call tests.

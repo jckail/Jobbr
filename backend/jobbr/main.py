@@ -13,6 +13,8 @@ from starlette.responses import Response
 from . import __version__
 from .api import router
 from .auth import AuthService, AuthSettings, build_auth_router
+from .capture_api import router as capture_router
+from .capture_services import allowed_ids
 from .config import get_settings
 from .db import get_engine, init_db
 from .discovery import router as discovery_router
@@ -75,6 +77,15 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def security_headers(request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
+        if request.url.path in {
+            base + "/api/extension/exchange",
+            base + "/api/extension/captures",
+            base + "/api/extension/disconnect",
+        }:
+            origin = request.headers.get("Origin", "")
+            if origin in {"chrome-extension://" + item for item in allowed_ids()}:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers.append("Vary", "Origin")
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
@@ -102,6 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(build_auth_router(auth), prefix=base)
     app.include_router(discovery_router, prefix=base)
     app.include_router(resume_router, prefix=base)
+    app.include_router(capture_router, prefix=base)
 
     _mount_spa(app, Path(st.static_dir), base)
 
