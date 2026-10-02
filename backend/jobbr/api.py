@@ -165,7 +165,10 @@ def get_job(job_id: int, s: SessionDep) -> Json:
 
 @router.patch("/jobs/{job_id}", dependencies=write)
 def patch_job(job_id: int, body: JobPatch, s: SessionDep) -> Json:
-    services.patch_job(s, _row(s, job_id).job, body)
+    try:
+        services.patch_job(s, _row(s, job_id).job, body)
+    except services.UserError as e:
+        raise _user_error(e) from e
     return _detail(s, job_id)
 
 

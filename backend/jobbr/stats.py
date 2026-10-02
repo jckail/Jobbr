@@ -22,7 +22,7 @@ def _score_buckets(scores: list[int]) -> list[dict[str, Any]]:
 
 
 def _added_per_day(rows: list[JobRow]) -> list[dict[str, Any]]:
-    since = utcnow() - timedelta(days=DAYS - 1)
+    since = (utcnow() - timedelta(days=DAYS - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
     counts = Counter(
         r.job.first_seen_at.date().isoformat() for r in rows if r.job.first_seen_at >= since
     )

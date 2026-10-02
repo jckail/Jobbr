@@ -96,6 +96,10 @@ class JobPatch(BaseModel):
     def required_when_present(cls, value: Any) -> Any:
         if value is None:
             raise ValueError("This field cannot be null; omit it to leave it unchanged.")
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("This field cannot be blank.")
         return value
 
 

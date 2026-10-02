@@ -3,7 +3,7 @@
 import json
 import math
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -183,6 +183,9 @@ def parse_date(s: str | None) -> datetime | None:
     if not s:
         return None
     try:
-        return datetime.fromisoformat(s).replace(tzinfo=None)
+        parsed = datetime.fromisoformat(s)
     except ValueError:
         return None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC)
+    return parsed.replace(tzinfo=None)

@@ -42,19 +42,18 @@ def _location(job: Job, profile: Profile) -> float:
         return 1.0 if pref in (RemotePolicy.remote, RemotePolicy.hybrid) else 0.8
     if pref == RemotePolicy.remote:
         return 0.15
-    if profile.locations and any(
-        p.lower().split(",")[0] in loc.lower() for p in profile.locations for loc in job.locations
-    ):
+    cities = [city for p in profile.locations if (city := p.split(",")[0].strip().lower())]
+    if cities and any(city in loc.lower() for city in cities for loc in job.locations):
         return 1.0
-    return 0.4 if profile.locations else 0.7
+    return 0.4 if cities else 0.7
 
 
 def _comp(job: Job, profile: Profile) -> float:
     if not profile.min_comp:
         return 0.7
     top = job.comp_max or job.comp_min
-    if not top:
-        return 0.5
+    if not top or job.comp_currency.upper() != "USD":
+        return 0.5  # unknown, or not comparable to the USD floor in the profile
     return (
         1.0
         if top >= profile.min_comp

@@ -277,7 +277,7 @@ def _load_page(body: JobCreate) -> Page:
     return Page(url, text, html)
 
 
-def _apply_extraction(job: Job, result: Result, text: str) -> None:
+def _apply_extraction(job: Job, result: Result, text: str, *, rehash: bool = True) -> None:
     d = result.data
     job.title = d.title
     job.department = d.department
@@ -297,7 +297,8 @@ def _apply_extraction(job: Job, result: Result, text: str) -> None:
     job.ai_take = d.ai_take
     job.posted_at = parse_date(d.posted_at)
     job.raw_text = text[:RAW_TEXT_LIMIT]
-    job.content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
+    if rehash:  # re-extraction sees only the stored, truncated text; keep the original hash
+        job.content_hash = hashlib.sha256(text.encode()).hexdigest()[:16]
     job.last_seen_at = utcnow()
 
 
@@ -316,6 +317,7 @@ def _record_extraction(s: Session, job: Job, result: Result) -> None:
             output_tokens=result.output_tokens,
             cost_usd=result.cost_usd,
             latency_ms=result.latency_ms,
+            ok=result.error is None,
             error=result.error,
         )
     )
@@ -344,6 +346,13 @@ def ingest(s: Session, body: JobCreate) -> Job:
         if company and (body.company is None or body.company.strip() == company.name):
             return existing
     result = extract(page.text, page.html, body.title, body.company)
+    if existing and result.error:
+        # AI failed and only the offline fallback ran: never replace saved details with weaker
+        # data. Log the attempt and return the job as it was.
+        _record_extraction(s, existing, result)
+        s.commit()
+        s.refresh(existing)
+        return existing
     host = urlparse(page.url).hostname if page.url else None
     company = get_or_create_company(s, _company_name(result.data.company, page.url), host)
 
@@ -365,9 +374,16 @@ def reextract(s: Session, job: Job) -> Job:
     if not job.raw_text:
         raise UserError("No stored text for this job.")
     result = extract(job.raw_text)
-    _apply_extraction(job, result, job.raw_text)
-    s.add(job)
     _record_extraction(s, job, result)
+    if result.error:
+        # The AI call failed and only the weaker offline fallback ran. Keep the saved details
+        # rather than overwrite them, but keep the failed attempt in the extraction log.
+        s.commit()
+        raise UserError(
+            "AI extraction failed, so your saved details were left unchanged. Try again."
+        )
+    _apply_extraction(job, result, job.raw_text, rehash=False)
+    s.add(job)
     rematch(s, job)
     s.commit()
     s.refresh(job)
@@ -376,13 +392,15 @@ def reextract(s: Session, job: Job) -> Job:
 
 def patch_job(s: Session, job: Job, body: JobPatch) -> Job:
     data = body.model_dump(exclude_unset=True)
+    low, high = data.get("comp_min", job.comp_min), data.get("comp_max", job.comp_max)
+    if low is not None and high is not None and low > high:
+        raise UserError("Minimum pay cannot be higher than maximum pay.")
     if company := data.pop("company", None):
         job.company_id = pk(get_or_create_company(s, company))
     if data.get("skills") is not None:
         data["skills"] = normalize_skills(data["skills"])
     for k, v in data.items():
         setattr(job, k, v)
-    job.comp_min, job.comp_max = sorted_pair(job.comp_min, job.comp_max)
     s.add(job)
     rematch(s, job)
     s.commit()
