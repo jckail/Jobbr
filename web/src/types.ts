@@ -50,11 +50,59 @@ export interface Profile {
   min_comp: number | null;
 }
 export interface Stats {
-  totals: { jobs: number; companies: number; avg_score: number | null; median_comp: number | null; ai_cost_usd: number };
+  totals: { jobs: number; companies: number; avg_score: number | null; median_comp: number | null; ai_cost_usd: number | null };
   stages: Record<Stage, number>;
   skill_demand: { skill: string; jobs: number; have: boolean }[];
   added_per_day: { day: string; count: number }[];
   score_buckets: { label: string; count: number }[];
   top_matches: { id: number; title: string; company: string; score: number | null }[];
 }
-export interface Config { version: string; llm_enabled: boolean; model: string | null; write_protected: boolean }
+export interface Config { version: string; llm_enabled: boolean; model: string | null; write_protected: boolean; private_instance: boolean; auth_enabled: boolean; seed_demo: boolean; career_enabled: boolean; cost_estimates_available: boolean }
+
+export interface AuthSession {
+  enabled: boolean;
+  ready: boolean;
+  reason: string | null;
+  authenticated: boolean;
+  user: { subject: string; name: string | null; email: string | null } | null;
+  csrf_token: string | null;
+  login_url: string | null;
+}
+export type CareerKind = "cover_letter" | "interview_prep";
+export interface CareerResult {
+  kind: CareerKind;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  requires_review: boolean;
+  draft: {
+    cover_letter: string | null;
+    interview_questions: { question: string; answer_outline: string[]; evidence_quotes: string[] }[];
+    strengths: string[];
+    gaps: string[];
+    questions_to_ask: string[];
+    evidence_quotes: string[];
+    review_notes: string[];
+  };
+}
+export interface ResumePreview { text: string; page_count: number; filename: string }
+
+export type DiscoveryProvider = "greenhouse" | "lever";
+export interface DiscoveryPosting {
+  source_id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  url: string;
+  raw_text: string;
+  remote_policy: string;
+}
+export interface DiscoverySnapshot {
+  provider: DiscoveryProvider;
+  board: string;
+  source_url: string;
+  fetched_at: string;
+  postings: DiscoveryPosting[];
+  truncated: boolean;
+  skipped_unsafe_links: number;
+}

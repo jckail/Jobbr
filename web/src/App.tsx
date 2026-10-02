@@ -1,84 +1,103 @@
 import { useEffect, useState } from "react";
-import { api, getToken, setToken } from "./api";
+import { api, clearSession, errorMessage, getToken, setToken } from "./api";
+import AppShell from "./components/AppShell";
+import SessionPanel from "./components/SessionPanel";
 import AddJob from "./pages/AddJob";
 import Dashboard from "./pages/Dashboard";
 import JobDetail from "./pages/JobDetail";
 import Jobs from "./pages/Jobs";
 import Pipeline from "./pages/Pipeline";
 import ProfilePage from "./pages/ProfilePage";
-import { Icon, ICONS, Modal, ToastProvider, useAsync, useRoute } from "./ui";
+import type { AuthSession, Config } from "./types";
+import { Modal, ToastProvider, useRoute } from "./ui";
 
-const NAV = [
-  ["/", "Overview", ICONS.dash], ["/jobs", "Jobs", ICONS.jobs], ["/pipeline", "Pipeline", ICONS.board], ["/profile", "Profile", ICONS.user],
-] as const;
+type Access = { loading: boolean; config?: Config; session?: AuthSession; tokenValidated: boolean; error?: string };
 
 function Shell() {
   const [route] = useRoute();
   const [adding, setAdding] = useState(false);
-  const [tokenOpen, setTokenOpen] = useState(false);
-  const [rev, setRev] = useState(0); // bump to refetch after mutations
-  const cfg = useAsync(api.config, []);
+  const [accessOpen, setAccessOpen] = useState(false);
+  const [rev, setRev] = useState(0);
+  const [accessRevision, setAccessRevision] = useState(0);
+  const [access, setAccess] = useState<Access>({ loading: true, tokenValidated: false });
   const [theme, setTheme] = useState<string>(() => { try { return localStorage.getItem("jobbr.theme") ?? ""; } catch { return ""; } });
+  const refresh = () => {
+    setAccess((previous) => ({ ...previous, loading: true, tokenValidated: false, error: undefined }));
+    setAccessRevision((value) => value + 1);
+    setRev((value) => value + 1);
+  };
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      try {
+        const [config, session] = await Promise.all([api.config(), api.session()]);
+        let tokenValidated = false;
+        if (!config.auth_enabled && config.private_instance && getToken()) {
+          try { await api.validateToken(); tokenValidated = true; }
+          catch { setToken(""); }
+        }
+        if (live) setAccess({ loading: false, config, session, tokenValidated });
+      } catch (failure) {
+        clearSession();
+        if (live) setAccess({ loading: false, tokenValidated: false, error: errorMessage(failure) });
+      }
+    };
+    void load();
+    return () => { live = false; };
+  }, [accessRevision]);
+  useEffect(() => {
+    const expired = () => {
+      clearSession();
+      setAccess((previous) => ({ ...previous, loading: true, tokenValidated: false, session: undefined }));
+      setAccessRevision((value) => value + 1);
+    };
+    window.addEventListener("jobbr:access-expired", expired);
+    return () => window.removeEventListener("jobbr:access-expired", expired);
+  }, []);
   useEffect(() => {
     const dark = theme ? theme === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    try { if (theme) localStorage.setItem("jobbr.theme", theme); } catch { /* */ }
+    try { if (theme) localStorage.setItem("jobbr.theme", theme); } catch { /* unavailable storage */ }
   }, [theme]);
+
+  const config = access.config;
+  const allowed = !access.loading && !access.error && !!config && (config.auth_enabled
+    ? !!access.session?.authenticated
+    : !config.private_instance || access.tokenValidated);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "n" && !/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName) && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setAdding(true); } };
-    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
-  }, []);
+    if (!allowed) return;
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "n" && !/INPUT|TEXTAREA|SELECT/.test((event.target as HTMLElement).tagName) && !event.metaKey && !event.ctrlKey) {
+        event.preventDefault(); setAdding(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [allowed]);
 
   const path = route.split("?")[0] ?? "/";
-  const bump = () => setRev((x) => x + 1);
+  const bump = () => setRev((value) => value + 1);
   const jobId = /^\/jobs\/(\d+)$/.exec(path)?.[1];
+  const panel = <SessionPanel config={config} session={access.session} loading={access.loading} error={access.error} onRefresh={refresh} />;
   let page;
-  if (jobId) page = <JobDetail id={+jobId} rev={rev} onChange={bump} />;
+  if (!allowed) page = <section className="card access-gate">{panel}</section>;
+  else if (jobId) page = <JobDetail key={jobId} id={+jobId} rev={rev} onChange={bump} llmEnabled={config?.llm_enabled ?? false} />;
   else if (path === "/jobs") page = <Jobs rev={rev} onAdd={() => setAdding(true)} />;
   else if (path === "/pipeline") page = <Pipeline rev={rev} onChange={bump} />;
   else if (path === "/profile") page = <ProfilePage onChange={bump} />;
-  else page = <Dashboard rev={rev} onAdd={() => setAdding(true)} llm={cfg.data?.llm_enabled} />;
+  else page = <Dashboard rev={rev} onAdd={() => setAdding(true)} llm={config?.llm_enabled} />;
+  const accessLabel = config?.auth_enabled ? access.session?.authenticated ? "Account" : "Sign in" : "Access";
 
-  const active = (to: string) => (to === "/" ? path === "/" : path.startsWith(to)) ? "page" : undefined;
-  return (
-    <div className="shell">
-      <aside className="side">
-        <div className="brand"><div className="logo">J</div>Jobbr</div>
-        <button className="btn primary" onClick={() => setAdding(true)}><Icon d={ICONS.plus} />Add job <kbd style={{ marginLeft: "auto", opacity: .7 }}>N</kbd></button>
-        <nav className="nav" style={{ marginTop: 10 }} aria-label="Main">
-          {NAV.map(([to, label, ic]) => <a key={to} href={`#${to}`} aria-current={active(to)}><Icon d={ic} />{label}</a>)}
-        </nav>
-        <div className="side-foot">
-          <div>{cfg.data?.llm_enabled ? <>✦ AI extraction · <span title={cfg.data.model ?? ""}>{cfg.data.model?.split("-").slice(1, 3).join(" ")}</span></> : "Heuristic extraction (no AI key set)"}</div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <button className="btn ghost" style={{ padding: "4px 8px" }} onClick={() => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")} aria-label="Toggle theme"><Icon d={ICONS.sun} /></button>
-            {cfg.data?.write_protected && <button className="btn ghost" style={{ padding: "4px 8px" }} onClick={() => setTokenOpen(true)}>{getToken() ? "🔓 Editing" : "🔒 Read-only"}</button>}
-          </div>
-          <div>v{cfg.data?.version}</div>
-        </div>
-      </aside>
-      <main className="main" id="main">{page}</main>
-      <nav className="mnav" aria-label="Main mobile">
-        {NAV.map(([to, label, ic]) => <a key={to} href={`#${to}`} aria-current={active(to)}><Icon d={ic} />{label}</a>)}
-        <a href="#/" onClick={(e) => { e.preventDefault(); setAdding(true); }}><Icon d={ICONS.plus} />Add</a>
-      </nav>
-      {adding && <AddJob onClose={() => setAdding(false)} onDone={() => { setAdding(false); bump(); }} />}
-      {tokenOpen && <TokenDialog onClose={() => setTokenOpen(false)} />}
-    </div>
-  );
-}
-
-function TokenDialog({ onClose }: { onClose: () => void }) {
-  const [v, setV] = useState(getToken());
-  return (
-    <Modal title="Unlock editing" onClose={onClose}>
-      <form onSubmit={(e) => { e.preventDefault(); setToken(v.trim()); onClose(); }}>
-        <p className="muted" style={{ margin: 0 }}>This instance is public read-only. Enter the access token to add or edit jobs.</p>
-        <input type="password" value={v} onChange={(e) => setV(e.target.value)} placeholder="Access token" autoFocus style={{ width: "100%", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 12px" }} />
-        <div className="row-end"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary">Save</button></div>
-      </form>
-    </Modal>
-  );
+  return <>
+    <AppShell path={path} accessAllowed={allowed} onAdd={() => allowed ? setAdding(true) : setAccessOpen(true)}
+      onThemeToggle={() => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}
+      authControl={<button className="btn ghost" onClick={() => setAccessOpen(true)}>{accessLabel}</button>}
+      footer={<><div>{config?.llm_enabled ? "OpenAI extraction enabled" : "Deterministic extraction"}</div><div>{config ? `v${config.version}` : "Checking connection"}</div></>}>
+      {page}
+    </AppShell>
+    {adding && allowed && <AddJob onClose={() => setAdding(false)} onDone={() => { setAdding(false); bump(); }} />}
+    {accessOpen && <Modal title="Workspace access" onClose={() => setAccessOpen(false)}>{panel}</Modal>}
+  </>;
 }
 
 export default function App() {

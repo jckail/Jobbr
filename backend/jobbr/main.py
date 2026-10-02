@@ -15,7 +15,9 @@ from .api import router
 from .auth import AuthService, AuthSettings, build_auth_router
 from .config import get_settings
 from .db import get_engine, init_db
+from .discovery import router as discovery_router
 from .models import Job
+from .resume import router as resume_router
 from .seed import seed
 
 log = logging.getLogger("jobbr")
@@ -92,6 +94,8 @@ def create_app() -> FastAPI:
     # API lives under the mount path so an ingress can route /jobbr/* without rewriting.
     app.include_router(router, prefix=base)
     app.include_router(build_auth_router(auth), prefix=base)
+    app.include_router(discovery_router, prefix=base)
+    app.include_router(resume_router, prefix=base)
 
     _mount_spa(app, Path(st.static_dir), base)
 

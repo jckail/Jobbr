@@ -1,5 +1,7 @@
 **
 !Dockerfile
+!scripts/
+!scripts/backup.py
 !backend/
 !backend/pyproject.toml
 !backend/requirements.lock

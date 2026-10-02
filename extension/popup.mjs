@@ -68,7 +68,7 @@ el.preview.addEventListener("submit", async event => {
     if (config.auth_enabled) throw new Error("This instance uses browser sign-in. Open Jobbr, sign in, and paste the posting in the app; extension sign-in is not yet supported.");
     status("Saving to Jobbr… Keep this popup open until it finishes.");
     const job = await apiRequest(base, "/jobs", { token, payload });
-    status(`Saved: ${job.title || "Job posting"}${job.company ? ` at ${job.company}` : ""}. Open Jobbr to review it.`);
+    status(`Saved: ${job.title || "Job posting"}${job.company?.name ? ` at ${job.company.name}` : ""}. Open Jobbr to review it.`);
   } catch (e) {
     status(e.name === "TimeoutError" || e.name === "TypeError" ? "Could not confirm the save. Check Jobbr before retrying; it may have completed. Check the selected destination and connection." : e.message, true);
   } finally { setBusy(false); }

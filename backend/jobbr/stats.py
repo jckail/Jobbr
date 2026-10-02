@@ -2,6 +2,7 @@
 
 from collections import Counter
 from datetime import timedelta
+from statistics import median
 from typing import Any
 
 from .models import Profile, Stage, utcnow
@@ -34,16 +35,20 @@ def compute(rows: list[JobRow], profile: Profile, ai_cost_usd: float) -> dict[st
     demand = Counter(skill for r in rows for skill in r.job.skills)
     have = set(profile.skills)
     scores = [r.score for r in rows if r.score is not None]
-    comps = sorted(
-        (r.job.comp_min + r.job.comp_max) // 2 for r in rows if r.job.comp_min and r.job.comp_max
-    )
+    comps = [
+        (r.job.comp_min + r.job.comp_max) / 2
+        for r in rows
+        if r.job.comp_currency.upper() == "USD"
+        and r.job.comp_min is not None
+        and r.job.comp_max is not None
+    ]
     top = sorted(rows, key=lambda r: -(r.score if r.score is not None else -1))[:5]
     return {
         "totals": {
             "jobs": len(rows),
             "companies": len({r.company.id for r in rows}),
             "avg_score": round(sum(scores) / len(scores)) if scores else None,
-            "median_comp": comps[len(comps) // 2] if comps else None,
+            "median_comp": median(comps) if comps else None,
             "ai_cost_usd": round(ai_cost_usd, 4),
         },
         "stages": {st.value: stages.get(st, 0) for st in Stage},

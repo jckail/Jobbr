@@ -87,6 +87,9 @@ def config(request: Request) -> Json:
         "write_protected": bool(st.api_token),
         "private_instance": st.private_instance,
         "auth_enabled": request.app.state.auth.settings.auth_enabled,
+        "seed_demo": st.seed_demo,
+        "career_enabled": st.llm_enabled,
+        "cost_estimates_available": False,
     }
 
 

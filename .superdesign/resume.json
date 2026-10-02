@@ -54,7 +54,18 @@
           "currentVersion": 3
         }
       },
-      "updatedAt": "2026-10-02T02:04:09.300419+00:00"
+      "updatedAt": "2026-10-02T02:29:39.386534+00:00",
+      "implementation": {
+        "status": "implemented-awaiting-browser-QA",
+        "authorizedBy": "User instruction: please resume all work after concrete prototype review",
+        "files": [
+          "web/src/components/AppShell.tsx",
+          "web/src/pages/Dashboard.tsx",
+          "web/src/ui.tsx",
+          "web/src/styles.css"
+        ],
+        "sourceRefreshRequired": true
+      }
     }
   }
 }

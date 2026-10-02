@@ -16,6 +16,8 @@ dependencies = [
   "alembic>=1.13",
   "PyJWT[crypto]>=2.10,<3",
   "psycopg[binary]>=3.2",
+  "python-multipart>=0.0.20",
+  "pypdf>=5.0",
 ]
 
 [project.optional-dependencies]

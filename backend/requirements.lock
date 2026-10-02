@@ -998,6 +998,10 @@ pyjwt==2.15.1 \
     #   jobbr
     #   mcp
     #   openai-agents
+pypdf==6.19.0 \
+    --hash=sha256:7e5d6e730e7dae87d560a2cee218b852f6498c8be61966f3cd02ead971e48d14 \
+    --hash=sha256:bbc43aca292369ccc6cbc8a921991ecf2538a3587ab5a116eff06c321d647155
+    # via jobbr
 python-dotenv==1.2.4 \
     --hash=sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc \
     --hash=sha256:f0d53e69935a851c0dcc78f3ab7aaccd8cabef0b92382b576b824212902873c0
@@ -1008,6 +1012,7 @@ python-multipart==0.0.32 \
     --hash=sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e \
     --hash=sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23
     # via
+    #   jobbr
     #   mcp
     #   openai-agents
 pywin32==312 ; sys_platform == 'win32' \

@@ -7,7 +7,10 @@ COPY web/ ./
 RUN npm run build
 
 # --- runtime ---
-FROM python:3.12-slim@sha256:eeb8088e67610b37583880c7627e3931f087cba55a35810819e34a398f624a47
+FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
+# The pinned base predates Debian's PCRE2 security update.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade \
+    libpcre2-8-0=10.46-1~deb13u3 && rm -rf /var/lib/apt/lists/*
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 JOBBR_STATIC_DIR=/app/static JOBBR_BASE_PATH=/jobbr
 WORKDIR /app
 COPY backend/pyproject.toml backend/requirements.lock ./
@@ -15,6 +18,7 @@ RUN pip install --require-hashes -r requirements.lock
 COPY backend/jobbr ./jobbr
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/migrations ./migrations
+COPY scripts/backup.py ./backup.py
 RUN pip install --no-deps .
 COPY --from=web /web/dist ./static
 RUN useradd -r -u 10001 jobbr && mkdir /data && chown jobbr /data

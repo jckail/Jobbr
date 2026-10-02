@@ -39,9 +39,11 @@ class JobExtraction(BaseModel):
 
 
 class JobCreate(BaseModel):
-    url: str | None = None
+    url: str | None = Field(default=None, max_length=8192)
     text: str | None = Field(
-        default=None, description="Pasted posting text (use when a page needs JS or login)"
+        default=None,
+        max_length=60_000,
+        description="Pasted posting text (use when a page needs JS or login)",
     )
     company: str | None = None
     title: str | None = None
@@ -58,9 +60,9 @@ class JobPatch(BaseModel):
 
 
 class ProfileIn(BaseModel):
-    name: str = "Me"
-    headline: str | None = None
-    resume_text: str = ""
+    name: str = Field(default="Me", max_length=200)
+    headline: str | None = Field(default=None, max_length=300)
+    resume_text: str = Field(default="", max_length=60_000)
     skills: list[str] | None = None  # None = derive from resume
     years_experience: int | None = None
     seniority: Seniority = Seniority.unknown
@@ -72,9 +74,9 @@ class ProfileIn(BaseModel):
 
 class ApplicationIn(BaseModel):
     stage: Stage | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=10_000)
     next_step_at: NaiveDatetime | None = None
-    note: str | None = None  # attached to the stage-change event
+    note: str | None = Field(default=None, max_length=2000)  # attached to the stage-change event
 
 
 class MatchOut(BaseModel):

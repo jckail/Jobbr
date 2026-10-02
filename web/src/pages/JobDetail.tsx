@@ -1,18 +1,31 @@
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { api, errorMessage } from "../api";
+import CareerPanel from "../components/CareerPanel";
 import { STAGES, type Stage } from "../types";
 import { Chips, CompanyLogo, Empty, Icon, ICONS, Score, StagePill, useAsync, useGuarded } from "../ui";
 import { ago, cap, comp } from "../util";
 
-export default function JobDetail({ id, rev, onChange }: { id: number; rev: number; onChange: () => void }) {
+function localDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : value + "Z");
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+export default function JobDetail({ id, rev, onChange, llmEnabled }: { id: number; rev: number; onChange: () => void; llmEnabled: boolean }) {
   const { data: j, loading, error, reload } = useAsync(() => api.job(id), [id, rev]);
   const [notes, setNotes] = useState("");
+  const [reminder, setReminder] = useState("");
+  const [savingReminder, setSavingReminder] = useState(false);
+  const nextStep = j?.application.next_step_at;
+  useEffect(() => { setReminder(localDate(nextStep)); }, [id, nextStep]);
   const guarded = useGuarded();
   const savedNotes = j?.application.notes ?? "";
   useEffect(() => { setNotes(savedNotes); }, [j?.id, savedNotes]);
 
   if (loading && !j) return <div className="skeleton" style={{ height: 360 }} />;
-  if (error || !j) return <Empty title="Job not found"><a href="#/jobs">Back to jobs</a></Empty>;
+  if (error) return <Empty title="Unable to load this role"><p>{errorMessage(error)}</p><button className="btn" onClick={reload}>Try again</button> <a href="#/jobs">Back to jobs</a></Empty>;
+  if (!j) return <Empty title="Job not found"><a href="#/jobs">Back to jobs</a></Empty>;
 
   const run = async (fn: () => Promise<unknown>, ok?: string) => {
     if (await guarded(fn, ok)) { onChange(); reload(); }
@@ -45,6 +58,7 @@ export default function JobDetail({ id, rev, onChange }: { id: number; rev: numb
             </div>
           </section>
 
+          <CareerPanel job={j} enabled={llmEnabled} />
           {j.summary && <section className="card"><header><h2>About the role</h2></header><p style={{ margin: 0 }}>{j.summary}</p></section>}
           <section className="card"><header><h2>Skills</h2></header>
             <h3 style={{ marginBottom: 8 }}>Required</h3><Chips items={j.skills} max={40} kind="accent" />
@@ -64,6 +78,14 @@ export default function JobDetail({ id, rev, onChange }: { id: number; rev: numb
             <label className="field" style={{ marginTop: 14 }}>Notes
               <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} onBlur={() => notes !== (j.application.notes ?? "") && run(() => api.setApplication(j.id, { notes }), "Saved")} placeholder="Recruiter, referral, questions to ask…" />
             </label>
+            <label className="field" style={{ marginTop: 14 }}>Next step reminder (your local time)
+              <input type="datetime-local" value={reminder} onChange={(event) => setReminder(event.target.value)} disabled={savingReminder} />
+            </label>
+            <div className="career-actions"><button className="btn" disabled={savingReminder || reminder === localDate(nextStep)} onClick={async () => {
+              setSavingReminder(true);
+              try { await run(() => api.setApplication(j.id, { next_step_at: reminder ? new Date(reminder).toISOString().slice(0, -1) : null }), reminder ? "Reminder saved" : "Reminder cleared"); }
+              finally { setSavingReminder(false); }
+            }}>{savingReminder ? "Saving…" : reminder ? "Save reminder" : "Clear reminder"}</button></div>
             {j.events && j.events.length > 0 && <ul className="timeline" style={{ margin: "16px 0 0", padding: 0 }}>{j.events.map((e) => <li key={e.id}><i /><span><b>{cap(e.to_stage)}</b> <span className="muted">· {ago(e.at)}</span></span></li>)}</ul>}
           </section>
           {m && (
