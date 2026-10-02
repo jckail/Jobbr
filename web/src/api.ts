@@ -1,4 +1,4 @@
-import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ResumePreview, SavedCareerDraft, Stage, Stats } from "./types";
+import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, Stage, Stats } from "./types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const TOKEN_KEY = "jobbr.token";
@@ -97,6 +97,12 @@ export const api = {
     req<Job>(`/jobs/${id}/application`, body("PUT", b)),
   validateToken: () => req<Profile>("/profile", {}, false),
   profile: () => req<Profile>("/profile"),
-  saveProfile: (p: Partial<Profile>) => req<Profile>("/profile", body("PUT", p)),
+  saveProfile: (p: Partial<ProfileSnapshot> & { expected_revision?: number }) => req<Profile>("/profile", body("PUT", p)),
+  profileRevisions: () => req<ProfileRevisionSummary[]>("/profile/revisions"),
+  profileRevision: (id: number) => req<ProfileRevision>(`/profile/revisions/${id}`),
+  activateProfileRevision: (id: number, expectedRevision: number) =>
+    req<Profile>(`/profile/revisions/${id}/activate`, body("POST", { expected_revision: expectedRevision })),
+  deleteProfileRevision: (id: number, expectedRevision: number) =>
+    req<void>(`/profile/revisions/${id}?expected_revision=${expectedRevision}`, { method: "DELETE" }),
   stats: () => req<Stats>("/stats"),
 };

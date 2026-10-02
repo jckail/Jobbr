@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .models import Stage
+from .models import Profile, ProfileRevision, ProfileRevisionHead, Stage, pk
 from .repo import JobRow
 
 Json = dict[str, Any]
@@ -18,3 +18,23 @@ def job_out(row: JobRow, detail: bool = False) -> Json:
         else {"stage": Stage.saved, "notes": ""}
     )
     return d
+
+
+def profile_out(profile: Profile, head: ProfileRevisionHead) -> Json:
+    return {
+        **profile.model_dump(mode="json"),
+        "active_revision_id": head.active_revision_id,
+        "revision_version": head.version,
+    }
+
+
+def profile_revision_out(row: ProfileRevision, active_id: int, detail: bool = False) -> Json:
+    result: Json = {
+        "id": pk(row),
+        "saved_at": row.saved_at.isoformat(),
+        "source": row.source,
+        "active": pk(row) == active_id,
+    }
+    if detail:
+        result["snapshot"] = row.snapshot
+    return result

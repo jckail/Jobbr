@@ -127,6 +127,22 @@ class Profile(SQLModel, table=True):
     updated_at: NaiveDatetime = Field(default_factory=utcnow)
 
 
+class ProfileRevision(SQLModel, table=True):
+    __table_args__ = {"sqlite_autoincrement": True}
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(foreign_key="profile.id", index=True)
+    snapshot: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    fingerprint: str
+    source: str = "saved"
+    saved_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+class ProfileRevisionHead(SQLModel, table=True):
+    profile_id: int = Field(foreign_key="profile.id", primary_key=True)
+    active_revision_id: int = Field(foreign_key="profilerevision.id")
+    version: int = 0
+
+
 class Match(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("job_id", "profile_id"),)
     id: int | None = Field(default=None, primary_key=True)
@@ -168,7 +184,7 @@ class SavedCareerDraft(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=utcnow)
 
 
-def pk(row: Company | Job | Application | Profile) -> int:
+def pk(row: Company | Job | Application | Profile | ProfileRevision) -> int:
     """Primary key of a persisted row (narrows Optional[int] for type checkers)."""
     if row.id is None:
         raise ValueError(f"{type(row).__name__} has not been flushed yet")

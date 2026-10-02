@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Annotated, Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, NaiveDatetime, field_validator
@@ -103,13 +103,24 @@ class ProfileIn(BaseModel):
     name: str = Field(default="Me", max_length=200)
     headline: str | None = Field(default=None, max_length=300)
     resume_text: str = Field(default="", max_length=60_000)
-    skills: list[str] | None = None  # None = derive from resume
+    skills: list[Annotated[str, Field(max_length=500)]] | None = Field(
+        default=None, max_length=100
+    )  # None = derive from resume
     years_experience: int | None = Field(default=None, ge=0, le=100)
     seniority: Seniority = Seniority.unknown
-    target_titles: list[str] = []
-    locations: list[str] = []
+    target_titles: list[Annotated[str, Field(max_length=500)]] = Field(
+        default_factory=list, max_length=100
+    )
+    locations: list[Annotated[str, Field(max_length=500)]] = Field(
+        default_factory=list, max_length=100
+    )
     remote_pref: RemotePolicy = RemotePolicy.unknown
     min_comp: int | None = Field(default=None, ge=0, le=1_000_000_000)
+    expected_revision: int | None = Field(default=None, ge=0)
+
+
+class RevisionActivate(BaseModel):
+    expected_revision: int = Field(ge=0)
 
 
 class ApplicationIn(BaseModel):

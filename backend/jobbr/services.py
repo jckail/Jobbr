@@ -1,14 +1,16 @@
 """Use-cases. API handlers stay thin; everything transactional lives here."""
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlparse
 
 from sqlalchemy import update
 from sqlmodel import Session, col, select
 
-from . import matching
+from . import matching, repo, serializers
 from .auth_models import AuthStoreGuard
 from .extract import Result, extract
 from .models import (
@@ -19,6 +21,8 @@ from .models import (
     Job,
     Match,
     Profile,
+    ProfileRevision,
+    ProfileRevisionHead,
     SavedCareerDraft,
     Stage,
     pk,
@@ -65,21 +69,153 @@ def get_profile(s: Session) -> Profile:
     return profile
 
 
+MAX_PROFILE_REVISIONS = 50
+MAX_PROFILE_SNAPSHOT_BYTES = 1024 * 1024
+
+
+class RevisionConflict(UserError):
+    """Stale editor or an active revision deletion; HTTP 409."""
+
+
+class RevisionMissing(UserError):
+    """Revision is not owned by the current profile; HTTP 404."""
+
+
+def _snapshot(p: Profile) -> dict[str, Any]:
+    return p.model_dump(mode="json", exclude={"id", "updated_at"})
+
+
+def _revision_fingerprint(snapshot: dict[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+
+
+def _profile_lock(s: Session, p: Profile) -> None:
+    # Reserve the existing owner row before reading head/count on SQLite and PostgreSQL.
+    s.execute(
+        update(Profile).where(col(Profile.id) == pk(p)).values(updated_at=col(Profile.updated_at))
+    )
+    s.refresh(p)
+
+
+def _revision_head(s: Session, p: Profile) -> ProfileRevisionHead:
+    head = repo.profile_revision_head(s, pk(p))
+    if head is not None:
+        return head
+    # Caller owns the profile write lock. Also covers profiles created after migration.
+    snapshot = _snapshot(p)
+    row = ProfileRevision(
+        profile_id=pk(p),
+        snapshot=snapshot,
+        fingerprint=_revision_fingerprint(snapshot),
+        source="saved",
+    )
+    s.add(row)
+    s.flush()
+    head = ProfileRevisionHead(profile_id=pk(p), active_revision_id=pk(row), version=0)
+    s.add(head)
+    s.flush()
+    return head
+
+
+def profile_output(s: Session, p: Profile) -> dict[str, Any]:
+    # Return content and token under the same lock: an old Profile identity-map value
+    # paired with a newer head would let an editor overwrite unseen changes.
+    _profile_lock(s, p)
+    head = _revision_head(s, p)
+    result = serializers.profile_out(p, head)
+    s.commit()
+    return result
+
+
+def _expected(head: ProfileRevisionHead, expected: int | None) -> None:
+    if expected is not None and head.version != expected:
+        raise RevisionConflict("Your profile history changed. Refresh and review before saving.")
+
+
 def save_profile(s: Session, body: ProfileIn) -> Profile:
     p = get_profile(s)
-    data = body.model_dump()
+    _profile_lock(s, p)
+    head = _revision_head(s, p)
+    _expected(head, body.expected_revision)
+    data = body.model_dump(exclude={"expected_revision"})
     skills = data.pop("skills")
-    for k, v in data.items():
-        setattr(p, k, v)
-    p.skills = normalize_skills(skills) if skills is not None else find_skills(p.resume_text)
+    data["skills"] = (
+        normalize_skills(skills) if skills is not None else find_skills(data["resume_text"])
+    )
+    snapshot = ProfileIn.model_validate(data).model_dump(mode="json", exclude={"expected_revision"})
+    if len(json.dumps(snapshot, ensure_ascii=False).encode()) > MAX_PROFILE_SNAPSHOT_BYTES:
+        raise UserError("Profile snapshot exceeds 1 MiB. Shorten the resume or profile lists.")
+    fingerprint = _revision_fingerprint(snapshot)
+    active = repo.profile_revision(s, pk(p), head.active_revision_id)
+    if active is None or active.profile_id != pk(p):
+        raise RuntimeError("Profile history head is invalid.")
+    if active.fingerprint == fingerprint:
+        s.commit()
+        return p
+    count = repo.profile_revision_count(s, pk(p))
+    if count >= MAX_PROFILE_REVISIONS:
+        raise UserError(
+            "This profile has 50 revisions. Delete an inactive revision before saving another."
+        )
+    row = ProfileRevision(profile_id=pk(p), snapshot=snapshot, fingerprint=fingerprint)
+    s.add(row)
+    s.flush()
+    head.active_revision_id = pk(row)
+    head.version += 1
+    s.add(head)
+    _apply_profile_snapshot(s, p, snapshot)
+    s.commit()
+    s.refresh(p)
+    return p
+
+
+def _apply_profile_snapshot(s: Session, p: Profile, snapshot: dict[str, Any]) -> None:
+    for key, value in snapshot.items():
+        setattr(p, key, value)
     p.updated_at = utcnow()
     s.add(p)
     s.flush()
     for job in s.exec(select(Job)).all():
         rematch(s, job, p)
+
+
+def revision_rows(s: Session, p: Profile) -> list[ProfileRevision]:
+    return repo.profile_revisions(s, pk(p), MAX_PROFILE_REVISIONS)
+
+
+def revision_find(s: Session, p: Profile, revision_id: int) -> ProfileRevision:
+    row = repo.profile_revision(s, pk(p), revision_id)
+    if row is None:
+        raise RevisionMissing("Profile revision not found.")
+    return row
+
+
+def activate_revision(s: Session, p: Profile, revision_id: int, expected: int) -> Profile:
+    _profile_lock(s, p)
+    head = _revision_head(s, p)
+    _expected(head, expected)
+    row = revision_find(s, p, revision_id)
+    if head.active_revision_id != revision_id:
+        _apply_profile_snapshot(s, p, row.snapshot)
+        head.active_revision_id = revision_id
+        head.version += 1
+        s.add(head)
     s.commit()
     s.refresh(p)
     return p
+
+
+def delete_revision(s: Session, p: Profile, revision_id: int, expected: int) -> None:
+    _profile_lock(s, p)
+    head = _revision_head(s, p)
+    _expected(head, expected)
+    row = revision_find(s, p, revision_id)
+    if head.active_revision_id == revision_id:
+        raise RevisionConflict("Activate another revision before deleting this one.")
+    s.delete(row)
+    head.version += 1
+    s.add(head)
+    s.commit()
 
 
 # --- companies --------------------------------------------------------------

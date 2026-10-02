@@ -37,7 +37,7 @@ export interface Job {
   extractions?: { id: number; method: string; model: string | null; cost_usd: number; latency_ms: number; error: string | null; created_at: string }[];
   events?: { id: number; from_stage: Stage | null; to_stage: Stage; note: string | null; at: string }[];
 }
-export interface Profile {
+export interface ProfileSnapshot {
   name: string;
   headline: string | null;
   resume_text: string;
@@ -48,6 +48,19 @@ export interface Profile {
   locations: string[];
   remote_pref: Remote;
   min_comp: number | null;
+}
+export interface Profile extends ProfileSnapshot {
+  active_revision_id: number;
+  revision_version: number;
+}
+export interface ProfileRevisionSummary {
+  id: number;
+  saved_at: string;
+  source: "saved" | "legacy";
+  active: boolean;
+}
+export interface ProfileRevision extends ProfileRevisionSummary {
+  snapshot: ProfileSnapshot;
 }
 export interface Stats {
   totals: { jobs: number; companies: number; avg_score: number | null; median_comp: number | null; ai_cost_usd: number | null };

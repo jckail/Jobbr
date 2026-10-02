@@ -30,6 +30,7 @@ from jobbr import auth_models, models  # noqa: E402, F401
 from jobbr.schema import SchemaMismatchError, verify_schema  # noqa: E402
 from migrations.baseline import metadata as initial_schema  # noqa: E402
 from migrations.drafts_baseline import metadata as drafts_schema  # noqa: E402
+from migrations.store_baseline import metadata as store_schema  # noqa: E402
 
 BACKUP_TIMEOUT_SECONDS = 60
 
@@ -63,6 +64,7 @@ def verify(path: Path) -> None:
         historical_schemas = {
             "0001_v2": initial_schema,
             "0002_saved_drafts": drafts_schema,
+            "0003_auth_store": store_schema,
         }
         if revisions == heads:
             expected = SQLModel.metadata

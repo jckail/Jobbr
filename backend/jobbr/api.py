@@ -17,7 +17,7 @@ from .career import (
 from .config import get_settings
 from .db import get_session
 from .models import Extraction, Profile, SavedCareerDraft, Stage, pk
-from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn
+from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn, RevisionActivate
 from .serializers import Json
 
 router = APIRouter(prefix="/api")
@@ -194,13 +194,19 @@ def put_application(job_id: int, body: ApplicationIn, s: SessionDep) -> Json:
 
 
 @router.get("/profile", dependencies=read)
-def get_profile(s: SessionDep) -> Profile:
-    return _profile(s)
+def get_profile(s: SessionDep) -> Json:
+    return services.profile_output(s, _profile(s))
 
 
 @router.put("/profile", dependencies=write)
-def put_profile(body: ProfileIn, s: SessionDep) -> Profile:
-    return services.save_profile(s, body)
+def put_profile(body: ProfileIn, s: SessionDep) -> Json:
+    try:
+        p = services.save_profile(s, body)
+    except services.RevisionConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except services.UserError as exc:
+        raise _user_error(exc) from exc
+    return services.profile_output(s, p)
 
 
 @router.get("/stats", dependencies=read)
@@ -224,6 +230,50 @@ def require_private_drafts(
 
 draft_read = [Depends(require_private_drafts)]
 draft_write = [Depends(require_private_drafts), Depends(require_token)]
+
+
+def _revision_error(exc: services.UserError) -> HTTPException:
+    return HTTPException(404 if isinstance(exc, services.RevisionMissing) else 409, str(exc))
+
+
+@router.get("/profile/revisions", dependencies=draft_read)
+def list_profile_revisions(s: SessionDep) -> list[Json]:
+    p = _profile(s)
+    active_id = services.profile_output(s, p)["active_revision_id"]
+    return [
+        serializers.profile_revision_out(row, active_id) for row in services.revision_rows(s, p)
+    ]
+
+
+@router.get("/profile/revisions/{revision_id}", dependencies=draft_read)
+def get_profile_revision(revision_id: int, s: SessionDep) -> Json:
+    p = _profile(s)
+    active_id = services.profile_output(s, p)["active_revision_id"]
+    try:
+        return serializers.profile_revision_out(
+            services.revision_find(s, p, revision_id), active_id, True
+        )
+    except services.RevisionMissing as exc:
+        raise _revision_error(exc) from exc
+
+
+@router.post("/profile/revisions/{revision_id}/activate", dependencies=draft_write)
+def activate_profile_revision(revision_id: int, body: RevisionActivate, s: SessionDep) -> Json:
+    try:
+        p = services.activate_revision(s, _profile(s), revision_id, body.expected_revision)
+    except (services.RevisionConflict, services.RevisionMissing) as exc:
+        raise _revision_error(exc) from exc
+    return services.profile_output(s, p)
+
+
+@router.delete("/profile/revisions/{revision_id}", status_code=204, dependencies=draft_write)
+def delete_profile_revision(
+    revision_id: int, s: SessionDep, expected_revision: Annotated[int, Query(ge=0)]
+) -> None:
+    try:
+        services.delete_revision(s, _profile(s), revision_id, expected_revision)
+    except (services.RevisionConflict, services.RevisionMissing) as exc:
+        raise _revision_error(exc) from exc
 
 
 @router.get("/jobs/{job_id}/career/drafts", dependencies=draft_read)

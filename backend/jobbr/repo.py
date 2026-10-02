@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlmodel import Session, col, select
 
 from .models import (
@@ -12,6 +12,8 @@ from .models import (
     Extraction,
     Job,
     Match,
+    ProfileRevision,
+    ProfileRevisionHead,
     Stage,
 )
 
@@ -37,7 +39,8 @@ def job_rows(s: Session, profile_id: int | None, job_id: int | None = None) -> l
         select(Job, Company, Match, Application)
         .join(Company, col(Company.id) == col(Job.company_id))
         .outerjoin(
-            Match, and_(col(Match.job_id) == col(Job.id), col(Match.profile_id) == profile_id)
+            Match,
+            and_(col(Match.job_id) == col(Job.id), col(Match.profile_id) == profile_id),
         )
         .outerjoin(Application, col(Application.job_id) == col(Job.id))
     )
@@ -90,3 +93,37 @@ def events_for(s: Session, application_id: int) -> list[ApplicationEvent]:
         .order_by(col(ApplicationEvent.id).desc())
     )
     return list(s.exec(stmt))
+
+
+def profile_revision_head(s: Session, profile_id: int) -> ProfileRevisionHead | None:
+    head = s.get(ProfileRevisionHead, profile_id)
+    if head is not None:
+        s.refresh(head)
+    return head
+
+
+def profile_revision(s: Session, profile_id: int, revision_id: int) -> ProfileRevision | None:
+    return s.exec(
+        select(ProfileRevision).where(
+            ProfileRevision.profile_id == profile_id, ProfileRevision.id == revision_id
+        )
+    ).first()
+
+
+def profile_revision_count(s: Session, profile_id: int) -> int:
+    return s.exec(
+        select(func.count())
+        .select_from(ProfileRevision)
+        .where(ProfileRevision.profile_id == profile_id)
+    ).one()
+
+
+def profile_revisions(s: Session, profile_id: int, limit: int) -> list[ProfileRevision]:
+    return list(
+        s.exec(
+            select(ProfileRevision)
+            .where(ProfileRevision.profile_id == profile_id)
+            .order_by(col(ProfileRevision.saved_at).desc(), col(ProfileRevision.id).desc())
+            .limit(limit)
+        ).all()
+    )

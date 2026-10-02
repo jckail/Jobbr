@@ -74,6 +74,10 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
         },
     )
     assert draft_response.status_code == 201, draft_response.text
+    original_history = client.get(f"{API}/profile/revisions").json()
+    original_revision = client.get(
+        f"{API}/profile/revisions/{profile.json()['active_revision_id']}"
+    ).json()
     original_drafts = client.get(f"{API}/jobs/{job_id}/career/drafts").json()
     original_detail = client.get(f"{API}/jobs/{job_id}").json()
     source = source_path()
@@ -91,12 +95,21 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
         restored_client.headers["X-Jobbr-Token"] = "backup-draft-token"
         assert restored_client.get(f"{API}/jobs/{job_id}/career/drafts").json() == original_drafts
         assert restored_client.get(f"{API}/profile").json() == profile.json()
+        assert restored_client.get(f"{API}/profile/revisions").json() == original_history
+        assert (
+            restored_client.get(
+                f"{API}/profile/revisions/{profile.json()['active_revision_id']}"
+            ).json()
+            == original_revision
+        )
         assert restored_client.get(f"{API}/jobs/{job_id}").json() == original_detail
         assert restored_client.get(f"{API}/stats").json()["totals"]["jobs"] == 1
     # Independent row checks include all child tables, IDs and committed JSON values.
     with sqlite3.connect(source) as original, sqlite3.connect(restored) as restored_connection:
         for table in (
             "profile",
+            "profilerevision",
+            "profilerevisionhead",
             "company",
             "job",
             "application",
@@ -224,7 +237,7 @@ def test_publication_race_does_not_replace_concurrent_output(
     assert list(tmp_path.glob(".jobbr-snapshot-*")) == []
 
 
-@pytest.mark.parametrize("revision", ["0001_v2", "0002_saved_drafts"])
+@pytest.mark.parametrize("revision", ["0001_v2", "0002_saved_drafts", "0003_auth_store"])
 def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, revision):
     configuration = Config()
     configuration.set_main_option(
@@ -257,6 +270,6 @@ def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, rev
     with sqlite3.connect(restored) as copy, sqlite3.connect(snapshot) as archive:
         assert copy.execute("SELECT name FROM company").fetchone() == ("Historical company",)
         assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0003_auth_store",
+            "0004_profile_revisions",
         )
         assert archive.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)

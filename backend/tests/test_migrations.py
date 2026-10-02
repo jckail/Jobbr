@@ -21,7 +21,7 @@ def version() -> str:
 
 def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
     db.init_db()
-    assert version() == "0003_auth_store"
+    assert version() == "0004_profile_revisions"
     assert set(inspect(db.get_engine()).get_table_names()) == {
         "alembic_version",
         "company",
@@ -35,9 +35,11 @@ def test_fresh_database_upgrade_is_repeatable(env: pytest.MonkeyPatch) -> None:
         "authtransaction",
         "authsession",
         "authstoreguard",
+        "profilerevision",
+        "profilerevisionhead",
     }
     db.init_db()
-    assert version() == "0003_auth_store"
+    assert version() == "0004_profile_revisions"
 
 
 def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> None:
@@ -52,7 +54,7 @@ def test_adopts_unversioned_v2_without_losing_data(env: pytest.MonkeyPatch) -> N
         company_id, job_id = company.id, job.id
     db.init_db()
     db.init_db()
-    assert version() == "0003_auth_store"
+    assert version() == "0004_profile_revisions"
     with Session(db.get_engine()) as session:
         assert session.get(Company, company_id).name == "Preserved company"
         assert session.get(Job, job_id).skills == ["Python"]

@@ -33,3 +33,13 @@ npm run check
 ```
 
 Tests cover real subprocess extraction, preview without profile persistence, malformed/encrypted/scanned PDFs, page/text/file limits, missing-length uploads, malformed multipart bodies, filename sanitization, authentication and timeout cleanup. Browser interaction should also be checked with a real resume before release, including preview editing, replacing existing form text, discarding, and explicit save.
+
+## Profile history
+
+Explicit profile saves retain immutable snapshots of all scoring inputs. Review a historical snapshot before restoring it; restoration activates that profile and re-scores jobs while preserving application notes and existing career drafts. PDF preview and form edits remain transient until Save. Identical saves reuse the active revision.
+
+History requires sign-in or a valid instance token even on an otherwise open demo. New snapshots are bounded to1MiB of UTF8 JSON and at most50 revisions per profile; no snapshot is silently evicted. Only an inactive revision can be explicitly deleted. Existing profiles are backfilled verbatim, with the date history was first recorded rather than an invented original resume save date. Earlier backups remain verifiable/restorable.
+
+The web interface sends a monotonic version token on saves/restores/deletes. A stale edit receives409 and keeps form/PDF content; review the active snapshot before deliberately keeping your edits for a new Save. Legacy programmatic profile PUT clients may omit this check for compatibility.
+
+Resume tailoring and generation provenance tied to a selected immutable revision remain a separate pending increment. Current career drafts retain their existing save-time fingerprints; history alone does not prove which revision generated an old draft.
