@@ -1,0 +1,202 @@
+name: ci
+on:
+  push:
+    branches: [main, claude/beautiful-sagan-mtnuvk]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select introduced commit range
+        id: range
+        run: |
+          python - <<'PYCODE'
+          import json, os, re, subprocess
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          if os.environ["GITHUB_EVENT_NAME"] == "pull_request":
+              before = event["pull_request"]["base"]["sha"]
+              after = event["pull_request"]["head"]["sha"]
+          else:
+              before, after = event["before"], event["after"]
+          assert re.fullmatch(r"[0-9a-f]{40}", before)
+          assert re.fullmatch(r"[0-9a-f]{40}", after)
+          if before == "0" * 40 or subprocess.run(
+              ["git", "cat-file", "-e", before + "^{commit}"],
+              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+          ).returncode:
+              base = subprocess.run(
+                  ["git", "merge-base", "origin/main", after],
+                  capture_output=True, text=True,
+              )
+              before = base.stdout.strip() if base.returncode == 0 else ""
+              if before == after:
+                  parent = subprocess.run(
+                      ["git", "rev-parse", after + "^"], capture_output=True, text=True,
+                  )
+                  before = parent.stdout.strip() if parent.returncode == 0 else ""
+          scan_range = before + ".." + after if before else after
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("commits=" + scan_range + "\n")
+          PYCODE
+      - name: Scan new commits for secrets (redacted)
+        env:
+          SCAN_RANGE: ${{ steps.range.outputs.commits }}
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --mount type=bind,src="$GITHUB_WORKSPACE",dst=/repo,readonly \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --log-opts="$SCAN_RANGE" --redact --no-banner
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: jobbr_test_only
+          POSTGRES_DB: jobbr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d jobbr_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      JOBBR_TEST_POSTGRES_URL: postgresql+psycopg://postgres:jobbr_test_only@127.0.0.1:5432/jobbr_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Check release guards without cloud access
+        run: python scripts/test_cloud_run_release.py
+      - run: uv sync --project backend --locked --extra dev
+      - run: |
+          uv export --project backend --locked --no-dev --no-emit-project --no-header --format requirements-txt --output-file /tmp/jobbr-requirements.lock
+          diff backend/requirements.lock /tmp/jobbr-requirements.lock
+      - run: uvx pip-audit==2.10.1 -r backend/requirements.lock --no-deps --disable-pip
+      - run: .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy jobbr && .venv/bin/pytest
+        working-directory: backend
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npm run check && npm audit --audit-level=high
+        working-directory: web
+  extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: node --test extension/*.test.mjs
+  image-test:
+    needs: [backend, web, extension, secrets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -t jobbr:test .
+      - name: Block fixable high and critical image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: jobbr:test
+          version: v0.70.0
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+          timeout: 10m
+      - run: >-
+          docker run -d --name jobbr-test -p 127.0.0.1:8000:8000
+          --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges
+          --mount type=volume,dst=/data jobbr:test
+      - run: python scripts/smoke.py
+      - if: always()
+        run: |
+          docker logs jobbr-test || true
+          docker rm -f jobbr-test || true
+      - name: Export the tested image for main publication
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: docker save jobbr:test | gzip > /tmp/jobbr-tested.tar.gz
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        with:
+          name: jobbr-tested-image
+          path: /tmp/jobbr-tested.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+  image-publish:
+    needs: [image-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: jobbr-tested-image
+          path: /tmp/jobbr-image
+      - run: gzip -dc /tmp/jobbr-image/jobbr-tested.tar.gz | docker load
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the exact tested image
+        id: publish
+        run: |
+          image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
+          image_ref="$image_name:$GITHUB_SHA"
+          docker tag jobbr:test "$image_ref"
+          docker push "$image_ref"
+          image_digest="$(docker image inspect "$image_ref" --format '{{index .RepoDigests 0}}')"
+          echo "name=$image_name" >> "$GITHUB_OUTPUT"
+          echo "digest=${image_digest##*@}" >> "$GITHUB_OUTPUT"
+      - name: Attest the published image digest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ steps.publish.outputs.name }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Verify the registry digest attestation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_NAME: ${{ steps.publish.outputs.name }}
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: gh attestation verify "oci://$IMAGE_NAME@$IMAGE_DIGEST" --repo "$GITHUB_REPOSITORY"

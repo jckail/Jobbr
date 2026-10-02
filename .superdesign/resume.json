@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "/": {
+      "targetKind": "existing-ui",
+      "projectId": "7b6925d7-25f7-4674-bcde-a2a59cf8354e",
+      "baselineDraftId": "b6b00f85-0e6e-4c1a-bb5a-e7a53c0ad599",
+      "activeDraftId": "58530471-d5ac-47ce-a7ce-d2e12986540d",
+      "designSystemPath": ".superdesign/design-system.md",
+      "referenceIds": [
+        "web-public-favicon.svg"
+      ],
+      "brandAssets": {
+        "logo": {
+          "assetKey": "web-public-favicon.svg",
+          "url": "https://vgbujcuwptvheqijyjbe.supabase.co/storage/v1/object/public/hmac-uploads/projects/7b6925d7-25f7-4674-bcde-a2a59cf8354e/brand-assets/web-public-favicon.svg/favicon.svg",
+          "sourcePath": "web/public/favicon.svg"
+        }
+      },
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "web/src/App.tsx",
+        "web/src/pages/Dashboard.tsx",
+        "web/src/ui.tsx",
+        "web/src/util.ts",
+        "web/src/styles.css"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b6cfea3bb2a7348aa5b1e351c4a2b1c1007e39b6d2a8ee5a5cc30a1c814e5702",
+        "web/src/App.tsx": "a2a216b3ed21787b5a2d320bd2f59586eecfb26d2554b3bf8e54ec149bdb460e",
+        "web/src/pages/Dashboard.tsx": "f852853a613cd69d17a10789c97e45c56b7606de6017d0592bf7b214029ec253",
+        "web/src/ui.tsx": "9677101e253b75714846b7b4b4852518f81362ff2bfad4f421190ddc082301ad",
+        "web/src/util.ts": "ccf1c5470b6b5f60a8e70c9ddad4ec6e55e3c42f910201eacaa3824671c7552d",
+        "web/src/styles.css": "56cbac343d18b5243c7af959a8afc08080769f590d88a4026785cdb369f74e9d"
+      },
+      "components": [
+        {
+          "name": "JobbrSidebar",
+          "id": "89f8ece3-17c8-4916-9688-6c5b83a2b592",
+          "sourcePath": "web/src/App.tsx",
+          "logoAssetKey": "web-public-favicon.svg"
+        }
+      ],
+      "drafts": {
+        "b6b00f85-0e6e-4c1a-bb5a-e7a53c0ad599": {
+          "title": "Current Jobbr \u2014 Overview baseline",
+          "visualDirection": "source-based current populated overview reproduction",
+          "currentVersion": 1
+        },
+        "58530471-d5ac-47ce-a7ce-d2e12986540d": {
+          "title": "Jobbr Command Center Redesign",
+          "visualDirection": "professional job search command center; best matches, focus actions and skill-gap coach",
+          "parentDraftId": "b6b00f85-0e6e-4c1a-bb5a-e7a53c0ad599",
+          "currentVersion": 3
+        }
+      },
+      "updatedAt": "2026-10-02T02:29:39.386534+00:00",
+      "implementation": {
+        "status": "implemented-awaiting-browser-QA",
+        "authorizedBy": "User instruction: please resume all work after concrete prototype review",
+        "files": [
+          "web/src/components/AppShell.tsx",
+          "web/src/pages/Dashboard.tsx",
+          "web/src/ui.tsx",
+          "web/src/styles.css"
+        ],
+        "sourceRefreshRequired": true
+      }
+    }
+  }
+}

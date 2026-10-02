@@ -1,0 +1,29 @@
+name: jobbr-v2
+services:
+  app:
+    build: .
+    image: jobbr:local
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      JOBBR_DATABASE_URL: sqlite:////data/jobbr.db
+      JOBBR_SEED_DEMO: ${JOBBR_SEED_DEMO:-true}
+      JOBBR_AI_PROVIDER: ${JOBBR_AI_PROVIDER:-openai}
+      JOBBR_MODEL: ${JOBBR_MODEL:-gpt-4.1-mini}
+      JOBBR_ANTHROPIC_MODEL: ${JOBBR_ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      JOBBR_OPENAI_API_KEY: ${JOBBR_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}
+      JOBBR_ANTHROPIC_API_KEY: ${JOBBR_ANTHROPIC_API_KEY:-${ANTHROPIC_API_KEY:-}}
+      JOBBR_API_TOKEN: ${JOBBR_API_TOKEN:-}
+      JOBBR_PRIVATE_INSTANCE: ${JOBBR_PRIVATE_INSTANCE:-false}
+    volumes:
+      - jobbr-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+volumes:
+  jobbr-data:

@@ -1,4 +1,18 @@
 scraped_data*
 .env
+.venv/
+.superdesign/tmp/
+.local/
 .venv
 role_url
+# v2
+__pycache__/
+*.pyc
+*.db
+*.db-*
+node_modules/
+web/dist/
+.env
+*.egg-info/
+backend/build/
+backend/dist/

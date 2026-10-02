@@ -1,0 +1,67 @@
+# Deployment template; resolve the target context, image digest, Secret, ingress
+# controller and TLS configuration before applying. See docs/DEPLOYMENT_ACCEPTANCE.md.
+# Target: https://jckail.com/jobbr (the app mounts itself at /jobbr; preserve the prefix).
+apiVersion: v1
+kind: Namespace
+metadata: { name: jobbr }
+---
+# Create the jobbr Secret externally; never commit live credentials or placeholder tokens.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: jobbr-data, namespace: jobbr }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: jobbr, namespace: jobbr }
+spec:
+  replicas: 1          # SQLite requires one instance; shared PostgreSQL auth also requires the same stable store key.
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: jobbr } }
+  template:
+    metadata: { labels: { app: jobbr } }
+    spec:
+      automountServiceAccountToken: false
+      securityContext: { fsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: jobbr
+          image: ghcr.io/jckail/jobbr:SET_VERIFIED_COMMIT_SHA
+          ports: [{ containerPort: 8000 }]
+          envFrom: [{ secretRef: { name: jobbr } }]
+          env:
+            - { name: JOBBR_SEED_DEMO, value: "false" }
+            - { name: JOBBR_PRIVATE_INSTANCE, value: "true" }
+          readinessProbe: { httpGet: { path: /healthz, port: 8000 } }
+          livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 10 }
+          resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 512Mi } }
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, runAsNonRoot: true, capabilities: { drop: [ALL] } }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: data, persistentVolumeClaim: { claimName: jobbr-data } }
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: jobbr, namespace: jobbr }
+spec:
+  selector: { app: jobbr }
+  ports: [{ port: 80, targetPort: 8000 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jobbr
+  namespace: jobbr
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt   # adjust to your issuer
+spec:
+  tls: [{ hosts: [jckail.com], secretName: jckail-com-tls }]
+  rules:
+    - host: jckail.com
+      http:
+        paths:
+          - { path: /jobbr, pathType: Prefix, backend: { service: { name: jobbr, port: { number: 80 } } } }

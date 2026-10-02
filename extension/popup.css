@@ -1,0 +1,39 @@
+:root { color-scheme: light dark; font: 14px/1.45 "Segoe UI", system-ui, sans-serif; color: #24344a; background: #f4f7fc; }
+* { box-sizing: border-box; }
+body { width: 390px; margin: 0; }
+header { display: flex; justify-content: space-between; align-items: center; background: #243b60; color: white; padding: 18px 20px; }
+h1 { margin: 0; font-size: 24px; letter-spacing: -.7px; }
+h1 span { display: block; font-size: 13px; font-weight: 400; letter-spacing: 0; }
+header a { color: white; font-size: 13px; }
+main { padding: 18px 20px; }
+label { display: block; margin: 13px 0 5px; font-weight: 600; }
+main > label:first-child { margin-top: 0; }
+input, textarea, select { width: 100%; padding: 9px; font: inherit; border: 1px solid #95a7c0; border-radius: 5px; color: inherit; background: #fff; }
+textarea { resize: vertical; min-height: 120px; }
+.hint { color: #536780; font-size: 12px; margin: 10px 0; }
+button { width: 100%; padding: 10px 12px; border: 0; border-radius: 5px; background: #245db5; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+button:hover { background: #194785; }
+button:disabled { opacity: .6; cursor: wait; }
+.secondary { margin-top: 8px; background: transparent; color: #245db5; border: 1px solid #95a7c0; }
+.secondary:hover { background: #e7edf7; }
+details { margin-top: 16px; }
+summary { cursor: pointer; }
+:focus-visible { outline: 3px solid #e09a20; outline-offset: 2px; }
+#count { float: right; font-size: 12px; font-weight: 400; }
+#status { margin: 12px 0 0; overflow-wrap: anywhere; }
+#status[data-error="true"] { color: #ab2837; }
+[hidden] { display: none !important; }
+@media (prefers-color-scheme: dark) {
+  :root { color: #e6edf7; background: #172337; }
+  input, textarea, select { background: #23334a; border-color: #627893; }
+  .hint { color: #b3c2d6; }
+  .secondary { color: #abcaff; }
+  .secondary:hover { background: #293e5a; }
+  #status[data-error="true"] { color: #ff9ca8; }
+}
+
+#private-connect { margin: 14px 0; border: 1px solid #95a7c0; border-radius: 5px; padding: 10px; }
+#private-connect summary { font-weight: 600; }
+#extension-id { overflow-wrap: anywhere; user-select: all; }
+#connection-status { font-size: 12px; }
+#approval-link { display: block; margin-bottom: 10px; color: inherit; }
