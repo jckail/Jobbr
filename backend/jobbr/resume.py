@@ -104,6 +104,8 @@ async def parse_isolated(data: bytes) -> dict[str, Any]:
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
+        env={},  # the parser must not see API keys, database URLs or the auth store key
+        close_fds=True,
     )
     try:
         output, _ = await asyncio.wait_for(process.communicate(data), timeout=PARSER_TIMEOUT)

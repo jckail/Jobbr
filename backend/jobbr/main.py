@@ -46,8 +46,12 @@ def _mount_spa(app: FastAPI, static: Path, base: str) -> None:
     def spa(path: str) -> FileResponse:
         if path.startswith("api/"):
             raise HTTPException(404)
-        f = (static / path).resolve()
-        if path and f.is_file() and root in f.parents:
+        try:
+            f = (static / path).resolve()
+            is_asset = bool(path) and f.is_file() and root in f.parents
+        except (ValueError, OSError):  # NUL bytes, over-long names: not a file, so serve the app
+            is_asset = False
+        if is_asset:
             return FileResponse(f)
         return FileResponse(static / "index.html", headers={"Cache-Control": "no-cache"})
 

@@ -56,11 +56,40 @@ def _resolve_url(value: str, deadline: float) -> tuple[httpx.URL, str]:
         raise FetchError("Invalid or unresolvable page URL.") from exc
     if not addresses:
         raise FetchError("Could not resolve the page host.")
-    if not get_settings().allow_private_fetch and any(
-        not address.is_global or address.is_multicast for address in addresses
-    ):
+    if not get_settings().allow_private_fetch and not all(map(is_public_address, addresses)):
         raise FetchError("That address is not publicly routable.")
     return url.copy_with(fragment=None), str(addresses[0])
+
+
+# IPv6 ranges that `ipaddress` reports as global but that must never be fetched.
+_NEVER_FETCH_V6 = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        "::/96",  # deprecated IPv4-compatible: ::127.0.0.1
+        "fec0::/10",  # deprecated site-local
+        "64:ff9b:1::/48",  # local-use NAT64 (RFC 8215)
+    )
+)
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")  # well-known NAT64 (RFC 6052)
+
+
+def is_public_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """True only for a unicast address that is globally routable, however it is wrapped.
+
+    IPv6 forms that embed an IPv4 address (mapped, NAT64, 6to4) are judged by the IPv4 address
+    they reach: on a NAT64/DNS64 network 64:ff9b::a9fe:a9fe is the cloud metadata service.
+    """
+    if address.is_multicast or not address.is_global:
+        return False
+    if isinstance(address, ipaddress.IPv6Address):
+        if any(address in network for network in _NEVER_FETCH_V6):
+            return False
+        embedded = address.ipv4_mapped or address.sixtofour
+        if address in _NAT64:
+            embedded = ipaddress.IPv4Address(int(address) & 0xFFFFFFFF)
+        if embedded is not None:
+            return is_public_address(embedded)
+    return True
 
 
 def assert_public_url(url: str) -> None:
