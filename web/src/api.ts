@@ -30,6 +30,21 @@ export function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+interface ValidationIssue { loc?: unknown[]; msg?: string }
+
+/** FastAPI sends 422 `detail` as a list of issues; turn it into one readable sentence. */
+export function describeDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const lines = detail.map((issue: ValidationIssue) => {
+      const field = (issue.loc ?? []).filter((part) => part !== "body").join(" › ").replace(/_/g, " ");
+      return field ? `${field}: ${issue.msg ?? "invalid value"}` : issue.msg ?? "invalid value";
+    });
+    if (lines.length) return lines.join("; ");
+  }
+  return "The request was not valid.";
+}
+
 async function req<T>(path: string, init: RequestInit = {}, notifyAuthFailure = true): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
@@ -40,7 +55,7 @@ async function req<T>(path: string, init: RequestInit = {}, notifyAuthFailure = 
   const r = await fetch(BASE + path, { ...init, credentials: "same-origin", headers });
   if (!r.ok) {
     let msg = r.statusText;
-    try { const b = await r.json(); msg = typeof b.detail === "string" ? b.detail : JSON.stringify(b.detail); } catch { /* non-JSON server error */ }
+    try { const b = await r.json(); msg = describeDetail(b.detail); } catch { /* non-JSON server error */ }
     if (notifyAuthFailure && r.status === 401 && (path === "/auth/logout" || (!path.startsWith("/auth/") && path !== "/config"))) {
       // An older request must not discard a replacement entered while it was pending.
       if (token && getToken() === token) setToken("");

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import type { Config } from "../types";
 import { Icon, ICONS, Modal, useToast } from "../ui";
@@ -11,6 +11,8 @@ export default function AddJob({ config, onClose, onDone }: { config: Config; on
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const toast = useToast();
+  const closed = useRef(false);
+  useEffect(() => () => { closed.current = true; }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,12 +21,12 @@ export default function AddJob({ config, onClose, onDone }: { config: Config; on
       const j = await api.addJob(mode === "url" ? { url: url.trim() } : { text, company: company.trim() || undefined }, config);
       toast(`Added ${j.title} · match ${j.match?.score ?? "–"}`);
       onDone();
-      window.location.hash = `/jobs/${j.id}`;
+      if (!closed.current) window.location.hash = `/jobs/${j.id}`; // cancelled meanwhile: stay put
     } catch (e) {
       const m = errorMessage(e);
-      setErr(m);
-      if (/paste/i.test(m)) setMode("text");
-    } finally { setBusy(false); }
+      if (!closed.current) setErr(m);
+      if (!closed.current && /paste/i.test(m)) setMode("text");
+    } finally { if (!closed.current) setBusy(false); }
   }
 
   return (

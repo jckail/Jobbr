@@ -104,8 +104,14 @@ const ToastCtx = createContext<(msg: string, err?: boolean) => void>(() => {});
 export const useToast = () => useContext(ToastCtx);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [t, setT] = useState<{ msg: string; err: boolean } | null>(null);
-  const show = useCallback((msg: string, err = false) => { setT({ msg, err }); setTimeout(() => setT(null), 4200); }, []);
-  return <ToastCtx.Provider value={show}>{children}{t && <div className={`toast ${t.err ? "err" : ""}`} role="status">{t.msg}</div>}</ToastCtx.Provider>;
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const show = useCallback((msg: string, err = false) => {
+    clearTimeout(timer.current); // an older toast's timer must not dismiss a newer one early
+    setT({ msg, err });
+    timer.current = setTimeout(() => setT(null), 4200);
+  }, []);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return <ToastCtx.Provider value={show}>{children}{t && <div className={`toast ${t.err ? "err" : ""}`} role={t.err ? "alert" : "status"}>{t.msg}</div>}</ToastCtx.Provider>;
 }
 
 /** Run an async action; toast `ok` on success or the error message on failure. Resolves to success. */

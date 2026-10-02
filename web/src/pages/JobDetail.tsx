@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import CareerPanel from "../components/CareerPanel";
 import TailoringPanel from "../components/TailoringPanel";
@@ -21,6 +21,8 @@ export default function JobDetail({ id, rev, onChange, llmEnabled, config }: { i
   const nextStep = j?.application.next_step_at;
   useEffect(() => { setReminder(localDate(nextStep)); }, [id, nextStep]);
   const guarded = useGuarded();
+  const [reextracting, setReextracting] = useState(false);
+  const reextractInFlight = useRef(false); // synchronous: `disabled` only applies after a re-render
   const savedNotes = j?.application.notes ?? "";
   useEffect(() => { setNotes(savedNotes); }, [j?.id, savedNotes]);
 
@@ -55,7 +57,7 @@ export default function JobDetail({ id, rev, onChange, llmEnabled, config }: { i
             {config?.llm_enabled && <p className="muted">Re-extraction may send posting text to {config.ai_provider_label} ({config.ai_model}) and incur API charges. Dollar cost is not estimated; your resume is not included.</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
               {j.url && <a className="btn primary" href={j.url} target="_blank" rel="noreferrer noopener"><Icon d={ICONS.ext} />Open posting</a>}
-              <button className="btn" disabled={!config} onClick={() => run(() => api.reextract(j.id, config), "Re-extracted")}><Icon d={ICONS.refresh} />Re-extract</button>
+              <button className="btn" disabled={!config || reextracting} onClick={async () => { if (reextractInFlight.current) return; reextractInFlight.current = true; setReextracting(true); try { await run(() => api.reextract(j.id, config), "Re-extracted"); } finally { reextractInFlight.current = false; setReextracting(false); } }}><Icon d={ICONS.refresh} />Re-extract</button>
               <button className="btn danger" onClick={() => confirm("Delete this job?") && run(async () => { await api.deleteJob(j.id); window.location.hash = "/jobs"; }, "Deleted")}><Icon d={ICONS.trash} />Delete</button>
             </div>
           </section>

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aiSelection, apiRequest, destination, jobPayload, postingUrl, savePosting, MAX_TEXT_LENGTH } from "./core.mjs";
+import { DESTINATIONS, aiSelection, apiRequest, destination, jobPayload, postingUrl, savePosting, MAX_TEXT_LENGTH } from "./core.mjs";
 
 const offlineConfig = { auth_enabled: false, ai_provider: "openai", ai_model: "test-model", llm_enabled: false };
 
@@ -83,4 +83,11 @@ test("browser sign-in and unverifiable settings prevent posting transmission", a
 test("locked writes and backend validation return actionable errors", async () => {
   await assert.rejects(apiRequest(destination("local"), "/jobs", { fetcher: async () => ({ ok: false, status: 401 }) }), /Editing is locked/);
   await assert.rejects(apiRequest(destination("local"), "/jobs", { fetcher: async () => ({ ok: false, status: 422, json: async () => ({ detail: "No posting text found" }) }) }), /No posting text found/);
+});
+
+test("host permissions cover only the API paths the extension calls", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const manifest = JSON.parse(await readFile(new URL("./manifest.json", import.meta.url), "utf8"));
+  const allowed = Object.values(DESTINATIONS).map((base) => `${base}/api/*`).sort();
+  assert.deepEqual([...manifest.host_permissions].sort(), allowed);
 });

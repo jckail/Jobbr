@@ -4,7 +4,7 @@ import type { Profile, ResumePreview } from "../types";
 import { Chips, Empty, useAsync, useToast } from "../ui";
 import { cap, parseDate } from "../util";
 
-const SENIORITY = ["unknown", "intern", "junior", "mid", "senior", "staff", "principal"];
+const SENIORITY = ["unknown", "intern", "junior", "mid", "senior", "staff", "principal", "manager", "director", "executive"];
 
 export default function ProfilePage({ onChange }: { onChange: () => void }) {
   const { data, loading, error, reload } = useAsync(api.profile, []);
