@@ -197,3 +197,24 @@ Seven offline release tests, all seventeen extension tests, Ruff/format across
 and web lint/types/production build passed. Independent source review's backup
 singleton finding was fixed and its regression passed. No source acceptance
 claim substitutes for pending real Chrome, registered sign-in or paid-call tests.
+
+## Concurrent branch integration checkpoint
+
+Before publication, fetch found five other-agent commits advancing the remote
+branch from 8aa6c71 to d9d6947. The verified authorization increment was saved
+locally as 9b34f52. Root created an isolated integration worktree at
+`/home/jkail/jobbr-extension-integration-20261002` and integrated the increment as
+e2ee6a8, preserving the remote extraction, validation, login-store, static-path
+and UI fixes. Conflict owners reviewed the combined source. The original
+`/home/jkail/jobbr-v2` worktree retains its other owner's cloud changes unchanged.
+
+The required combined gate exited 75 before running checks because the shared
+verification slot remained occupied. Its log is
+`.local/verify-integrated-extension.log`. Do not treat the earlier 430-case
+result as verification of the integrated source. No integrated source has been
+pushed. Resume this gate only after resource availability changes, then fetch
+again before publishing to the existing draft PR.
+
+Prepared ignored Docker acceptance helpers export only committed image inputs
+and use an isolated QA volume. They have not executed. The local app still runs
+db40e3f, and real Chrome acceptance still awaits the installation-path handoff.
