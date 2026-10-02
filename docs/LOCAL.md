@@ -9,7 +9,9 @@ cd /home/jkail/jobbr-v2
 docker compose -f compose.yaml up --build -d
 ```
 
-Open http://localhost:8000/jobbr/ and http://localhost:8000/jobbr/api/docs. The API and built UI share an origin, mount path and image. No API key is required for demo ingestion/matching/pipeline. Add server-side JOBBR_OPENAI_API_KEY only to intentionally enable paid extraction/drafting. Demo data is explicit in local Compose; production manifest disables it and requires private access.
+Open http://localhost:8000/jobbr/ and http://localhost:8000/jobbr/api/docs. The API and built UI share an origin, mount path and image. No API key is required for demo ingestion/matching/pipeline. Demo data is explicit in local Compose; production manifest disables it and requires private access.
+
+Compose defaults to `JOBBR_AI_PROVIDER=openai`, `JOBBR_MODEL=gpt-4.1-mini`, and `JOBBR_ANTHROPIC_MODEL=claude-sonnet-4-6`, matching the server defaults. To intentionally enable paid extraction/drafting, configure the selected provider's server-side key: `JOBBR_OPENAI_API_KEY` for OpenAI, or `JOBBR_AI_PROVIDER=anthropic` with `JOBBR_ANTHROPIC_API_KEY` for Claude. Compose also accepts the generic `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` aliases when the corresponding Jobbr-specific key is empty or unset. Only the selected provider's key enables AI; it never falls back to the other provider. Model overrides use `JOBBR_MODEL` and `JOBBR_ANTHROPIC_MODEL`. Keys remain server-side; leave both keys unset for the no-key demo.
 
 The named volume holds your database across restarts. Do not run `down --volumes` against a database you want to keep. Existing legacy docker-compose.yml is preserved; always pass `-f compose.yaml` for v2.
 
