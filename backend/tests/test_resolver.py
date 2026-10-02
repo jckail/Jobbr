@@ -144,4 +144,3 @@ def test_fetch_preserves_dns_timeout_message(monkeypatch):
     monkeypatch.setattr(safefetch, "resolve_addresses", fail)
     with pytest.raises(safefetch.FetchError, match="DNS resolution timed out"):
         safefetch._resolve_url("https://example.invalid/", time.monotonic() + 1)
-
