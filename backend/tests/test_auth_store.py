@@ -206,22 +206,23 @@ def test_concurrent_creates_cannot_exceed_capacity(stores):
     first = DatabaseAuthStore(first.engine, key, capacity=1)
     second = DatabaseAuthStore(second.engine, key, capacity=1)
     scope = first.scope("configuration")
+    callback = "https://example/callback"
+    cookies = [secrets.token_urlsafe(32), secrets.token_urlsafe(32)]
 
-    def create(store):
-        try:
-            store.create_transaction(
-                secrets.token_urlsafe(32), "", transaction(), scope, "https://example/callback"
-            )
-        except StoreFull:
-            return False
-        else:
-            return True
+    def create(store, cookie):
+        store.create_transaction(cookie, "", transaction(), scope, callback)
 
+    # Anonymous logins evict the oldest pending one instead of failing, so a flood cannot lock
+    # the owner out; the shared bound still holds, so exactly one pending login survives.
     with ThreadPoolExecutor(max_workers=2) as pool:
-        pending = [pool.submit(create, store) for store in (first, second)]
-        assert sum(future.result(timeout=10) for future in pending) == 1
+        pending = [
+            pool.submit(create, store, c) for store, c in zip((first, second), cookies, strict=True)
+        ]
+        for future in pending:
+            future.result(timeout=10)
     with first.engine.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(TRANSACTIONS)) == 1
+    assert sum(first.consume_transaction(c, scope, callback) is not None for c in cookies) == 1
 
 
 def test_malformed_cookie_never_reaches_database(stores):

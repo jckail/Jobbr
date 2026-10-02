@@ -147,8 +147,20 @@ class DatabaseAuthStore:
             )
         )
         count = connection.scalar(select(func.count()).select_from(table))
-        if count is None or count >= self.capacity:
-            raise StoreFull("Auth store is full")
+        if count is not None and count < self.capacity:
+            return
+        if table is TRANSACTIONS:
+            # Anonymous callers create these, so refusing when full would let anyone lock the
+            # owner out of signing in. Drop the oldest pending logins instead (10 minute lifetime).
+            surplus = (count or 0) - self.capacity + 1
+            oldest = (
+                select(table.c.token_digest)
+                .order_by(table.c.expires_at, table.c.token_digest)
+                .limit(surplus)
+            )
+            connection.execute(delete(table).where(table.c.token_digest.in_(oldest)))
+            return
+        raise StoreFull("Auth store is full")
 
     def create_transaction(
         self, cookie: str, old_cookie: str, tx: Transaction, scope: str, redirect_uri: str
