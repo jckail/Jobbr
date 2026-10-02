@@ -141,11 +141,79 @@ def test_invalid_json_sanitized(monkeypatch):
 
 
 def test_results_and_text_bounded(monkeypatch):
-    response(monkeypatch, {"jobs": [greenhouse(content="x" * 30000)] * 101})
+    response(
+        monkeypatch,
+        {
+            "jobs": [
+                greenhouse(
+                    id=index,
+                    absolute_url=f"https://boards.greenhouse.io/acme/jobs/{index}",
+                    content="x" * 30000,
+                )
+                for index in range(1, 102)
+            ]
+        },
+    )
     result = discovery.discover("greenhouse", "acme")
     assert len(result.postings) == 100
     assert result.truncated
     assert len(result.postings[0].raw_text) == discovery.TEXT_CAP
+
+
+@pytest.mark.parametrize("provider", ["greenhouse", "lever"])
+def test_duplicate_identifiers_keep_first_safe_posting(monkeypatch, provider):
+    if provider == "greenhouse":
+        rows = [
+            greenhouse(title="First posting"),
+            greenhouse(title="Later duplicate"),
+            greenhouse(id=124, absolute_url="https://boards.greenhouse.io/acme/jobs/124"),
+        ]
+    else:
+        rows = [
+            lever(text="First posting"),
+            lever(text="Later duplicate"),
+            lever(id="other", hostedUrl="https://jobs.lever.co/acme/other"),
+        ]
+    response(monkeypatch, {"jobs": rows} if provider == "greenhouse" else rows)
+    result = discovery.discover(provider, "acme")
+    assert len(result.postings) == 2
+    assert result.postings[0].title == "First posting"
+    assert len({posting.source_id for posting in result.postings}) == 2
+    assert result.skipped_unsafe_links == 0
+    assert not result.truncated
+
+
+@pytest.mark.parametrize("provider", ["greenhouse", "lever"])
+def test_unsafe_duplicate_does_not_hide_later_safe_posting(monkeypatch, provider):
+    rows = (
+        [greenhouse(absolute_url="https://evil.example/jobs/123"), greenhouse()]
+        if provider == "greenhouse"
+        else [lever(hostedUrl="https://evil.example/abc-123"), lever()]
+    )
+    response(monkeypatch, {"jobs": rows} if provider == "greenhouse" else rows)
+    result = discovery.discover(provider, "acme")
+    assert len(result.postings) == 1
+    assert (
+        result.postings[0].url
+        == rows[1]["absolute_url" if provider == "greenhouse" else "hostedUrl"]
+    )
+    assert result.skipped_unsafe_links == 1
+
+
+@pytest.mark.parametrize("provider", ["greenhouse", "lever"])
+def test_deduplication_does_not_expand_examined_window(monkeypatch, provider):
+    if provider == "greenhouse":
+        rows = [greenhouse()] * discovery.MAX_RESULTS + [
+            greenhouse(id=124, absolute_url="https://boards.greenhouse.io/acme/jobs/124")
+        ]
+    else:
+        rows = [lever()] * discovery.MAX_RESULTS + [
+            lever(id="other", hostedUrl="https://jobs.lever.co/acme/other")
+        ]
+    response(monkeypatch, {"jobs": rows} if provider == "greenhouse" else rows)
+    result = discovery.discover(provider, "acme")
+    assert len(result.postings) == 1
+    assert result.truncated
 
 
 def test_valid_empty_board_is_explicit_success(monkeypatch):

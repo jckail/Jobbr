@@ -176,6 +176,7 @@ def _normalize(
 ) -> tuple[list[DiscoveryPosting], int]:
     postings = []
     skipped = 0
+    seen: set[str] = set()
     for raw in rows[:MAX_RESULTS]:
         if provider == "greenhouse":
             row = _GreenhousePosting.model_validate(raw)
@@ -201,6 +202,9 @@ def _normalize(
         if link is None:
             skipped += 1
             continue
+        if source_id in seen:
+            continue
+        seen.add(source_id)
         postings.append(
             DiscoveryPosting(
                 source_id=source_id,

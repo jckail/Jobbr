@@ -46,3 +46,9 @@ passed. Browser disclosures pin provider/model/enabled configuration; stale sele
 are rejected before generation. Full pre-push checks are running through the shared
 guard after availability changed. No live provider generation, credentials or routing
 action occurred; real provider and production acceptance requirements remain open.
+
+## Discovery repeat-save increment (October 2)
+
+Implemented exact-URL unchanged pasted-posting detection before extraction: matching stored text/full-source hash and absent or matching title/company hints return the existing job without changing application state or extraction records. Fetched HTML and explicit re-extraction retain their prior behavior. ATS snapshots retain the first safe posting per source ID inside the same 100-row window; unsafe duplicates cannot hide a later safe entry. Discovery searches now look up saved job URLs, preserving links across refreshed results, and explicitly explain snapshot freshness. Independent source review found no blockers; 53 focused backend cases, Ruff/format, strict mypy and web lint/types passed. Synthetic-response browser checks verified saved-role hydration, repeat search without a second save and visible lookup failure. Mandatory local full verification passed; publication and exact-SHA hosted CI verification follow.
+
+Canonical ATS identities, database uniqueness/concurrent writes and upstream availability tracking remain follow-ups; a checked timestamp does not prove a posting remains available. Versioned resumes/profile tailoring, supported extension authentication/real Chrome acceptance and the explicitly gated provider/production work remain open.

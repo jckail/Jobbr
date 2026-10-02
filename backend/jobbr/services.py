@@ -185,11 +185,21 @@ def _ensure_application(s: Session, job: Job) -> None:
 
 def ingest(s: Session, body: JobCreate) -> Job:
     page = _load_page(body)
+    existing = s.exec(select(Job).where(Job.url == page.url)).first() if page.url else None
+    if (
+        existing
+        and page.html is None  # Fetched JSON-LD can change without changing visible posting text.
+        and existing.raw_text == page.text
+        and existing.content_hash == hashlib.sha256(page.text.encode()).hexdigest()[:16]
+        and (body.title is None or body.title == existing.title)
+    ):
+        company = s.get(Company, existing.company_id)
+        if company and (body.company is None or body.company.strip() == company.name):
+            return existing
     result = extract(page.text, page.html, body.title, body.company)
     host = urlparse(page.url).hostname if page.url else None
     company = get_or_create_company(s, _company_name(result.data.company, page.url), host)
 
-    existing = s.exec(select(Job).where(Job.url == page.url)).first() if page.url else None
     job = existing or Job(company_id=pk(company), url=page.url, title=result.data.title)
     job.company_id = pk(company)
     _apply_extraction(job, result, page.text)

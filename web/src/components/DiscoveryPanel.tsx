@@ -22,9 +22,14 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
     event.preventDefault();
     if (inFlight.current) return;
     inFlight.current = true;
-    setSearching(true); setError(""); setSnapshot(null); setSaved({});
+    setSearching(true); setError(""); setSnapshot(null);
     try {
-      setSnapshot(await api.discover(provider, board.trim(), query.trim(), remote ? "remote" : ""));
+      const [result, jobs] = await Promise.all([
+        api.discover(provider, board.trim(), query.trim(), remote ? "remote" : ""),
+        api.jobs(),
+      ]);
+      setSaved(Object.fromEntries(jobs.flatMap((job) => job.url ? [[job.url, job.id]] : [])));
+      setSnapshot(result);
     } catch (failure) { setError(errorMessage(failure)); }
     finally { inFlight.current = false; setSearching(false); }
   };
@@ -37,10 +42,10 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
       return;
     }
     inFlight.current = true;
-    setSaving(posting.source_id); setError("");
+    setSaving(posting.url); setError("");
     try {
       const job = await api.addJob({ url: posting.url, text: posting.raw_text, title: posting.title, company: employer }, config.data);
-      setSaved((current) => ({ ...current, [posting.source_id]: job.id }));
+      setSaved((current) => ({ ...current, [posting.url]: job.id }));
       onSaved();
     } catch (failure) { setError(errorMessage(failure)); }
     finally { inFlight.current = false; setSaving(null); }
@@ -77,6 +82,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
       {error && <p className="form-error" role="alert">{error}</p>}
       {snapshot && <div className="discovery-results" aria-live="polite">
         <p className="muted">{snapshot.postings.length} openings · {cap(snapshot.provider)} · checked {new Date(snapshot.fetched_at).toLocaleString()}. <a href={snapshot.source_url} target="_blank" rel="noopener noreferrer">View source</a></p>
+        <p className="muted">Postings may change after this check. Search again to refresh this snapshot, and review the source before applying.</p>
         {snapshot.truncated && <p className="muted">Only the first 100 postings were checked. Keywords filter that same window; review the company’s board for all openings.</p>}
         {!!snapshot.skipped_unsafe_links && <p className="muted">{snapshot.skipped_unsafe_links} incomplete or unsafe postings were omitted.</p>}
         {!snapshot.postings.length && <p>No openings match in the checked postings. Try different keywords or review the company’s board.</p>}
@@ -85,8 +91,8 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
           <p>{posting.raw_text.slice(0, 320)}{posting.raw_text.length > 320 ? "…" : ""}</p>
           <div className="discovery-actions">
             <a className="btn" href={posting.url} target="_blank" rel="noopener noreferrer">Review posting</a>
-            {saved[posting.source_id] ? <a className="btn primary" href={`#/jobs/${saved[posting.source_id]}`}>Open saved role</a> :
-              <button className="btn primary" disabled={saving !== null || searching || config.loading || !!config.error || !config.data} onClick={() => void save(posting)}>{saving === posting.source_id ? "Saving…" : "Save to my jobs"}</button>}
+            {saved[posting.url] ? <a className="btn primary" href={`#/jobs/${saved[posting.url]}`}>Open saved role</a> :
+              <button className="btn primary" disabled={saving !== null || searching || config.loading || !!config.error || !config.data} onClick={() => void save(posting)}>{saving === posting.url ? "Saving…" : "Save to my jobs"}</button>}
           </div>
         </article>)}
       </div>}
