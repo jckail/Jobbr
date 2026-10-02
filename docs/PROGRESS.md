@@ -276,3 +276,21 @@ AgentMon registration/feed tools were absent from both scoped and complete
 Toolport discovery in this session. No registration, heartbeat or dashboard
 completion is claimed. Actual repository/worktree ownership remains unchanged;
 curated local checkpoints remain the coordination fallback.
+
+
+## Canonical discovery saved-role hydration
+
+Job list/detail responses now expose the server-owned external identity. Queries
+load identity mappings in batches rather than one query per job, retaining
+recognized legacy URL identities without adopting or merging old rows. Conflicting
+mappings remain unknown. Discovery matches that identity across vendor hosts and
+tracking URLs; multiple saved matches lead to explicit review rather than an
+arbitrary job link or another save. The first stored URL remains unchanged.
+
+Focused hydration/stats/availability checks passed 12 cases with one PostgreSQL
+skip; Ruff and strict mypy passed the three affected backend modules. A detached
+ORM access in the new duplicate-row fixture was corrected before the passing
+run. Web checks and the mandatory combined gate remain pending. A live shared
+lock holder exited, but a fresh availability probe still found the shared slot
+occupied; no unchanged full gate was queued. Ownership/blocker status was sent
+to the designated existing supervisor; AgentMon remains absent from the catalog.

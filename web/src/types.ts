@@ -14,6 +14,7 @@ export interface Job {
   id: number;
   title: string;
   url: string | null;
+  external_identity?: { provider: DiscoveryProvider; board: string; posting_id: string } | null;
   company: { id: number; name: string; domain: string | null; industry: string | null };
   seniority: string;
   employment_type: string | null;

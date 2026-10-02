@@ -105,3 +105,14 @@ skip, and strict mypy across the four affected backend modules. The UI has
 explicit checking, retry and timestamp states; web/full gate and real browser
 acceptance remain unverified. Source-independent Graphify results lacked Jobbr
 coverage; live source and dependency-free Codemogger text retrieval were used.
+
+
+### Saved-result hydration
+
+The list/detail DTO carries an optional server-derived external identity, loaded
+in batches. Existing unmapped legacy rows can expose a recognized URL identity
+without creating mappings. Discovery compares exact URL or the complete
+provider/board/posting tuple, preserving case and first URL. Multiple job IDs
+matching a posting produce a review action; no old rows are merged or silently
+selected. Generic URLs retain exact matching. Combined UI/browser verification
+is still pending.

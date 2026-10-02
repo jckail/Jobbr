@@ -6,6 +6,8 @@ from datetime import datetime
 from sqlalchemy import and_, delete, func
 from sqlmodel import Session, col, select
 
+from . import canonical_repo
+from .canonical import Identity
 from .models import (
     Application,
     ApplicationEvent,
@@ -18,6 +20,7 @@ from .models import (
     SavedTailoringDraft,
     Stage,
     TailoringReceipt,
+    pk,
 )
 
 
@@ -27,6 +30,7 @@ class JobRow:
     company: Company
     match: Match | None
     application: Application | None
+    identity: Identity | None = None
 
     @property
     def stage(self) -> Stage:
@@ -49,7 +53,9 @@ def job_rows(s: Session, profile_id: int | None, job_id: int | None = None) -> l
     )
     if job_id is not None:
         stmt = stmt.where(col(Job.id) == job_id)
-    return [JobRow(*r) for r in s.exec(stmt).all()]
+    rows = s.exec(stmt).all()
+    identities = canonical_repo.saved_identities(s, [row[0] for row in rows])
+    return [JobRow(*row, identity=identities[pk(row[0])]) for row in rows]
 
 
 def filter_rows(

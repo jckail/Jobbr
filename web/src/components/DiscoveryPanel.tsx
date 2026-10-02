@@ -15,6 +15,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
   const [saved, setSaved] = useState<Record<string, number>>({});
+  const [conflicts, setConflicts] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const inFlight = useRef(false);
 
@@ -28,7 +29,20 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
         api.discover(provider, board.trim(), query.trim(), remote ? "remote" : ""),
         api.jobs(),
       ]);
-      setSaved(Object.fromEntries(jobs.flatMap((job) => job.url ? [[job.url, job.id]] : [])));
+      const linked: Record<string, number> = {};
+      const ambiguous: Record<string, boolean> = {};
+      for (const posting of result.postings) {
+        const matches = new Set(jobs.filter((job) => job.url === posting.url || (
+          job.external_identity?.provider === result.provider &&
+          job.external_identity.board === result.board &&
+          job.external_identity.posting_id === posting.source_id
+        )).map((job) => job.id));
+        // Ambiguous legacy rows need review; never select an arbitrary saved job.
+        if (matches.size === 1) linked[posting.url] = [...matches][0];
+        else if (matches.size > 1) ambiguous[posting.url] = true;
+      }
+      setSaved(linked);
+      setConflicts(ambiguous);
       setSnapshot(result);
     } catch (failure) { setError(errorMessage(failure)); }
     finally { inFlight.current = false; setSearching(false); }
@@ -91,7 +105,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
           <p>{posting.raw_text.slice(0, 320)}{posting.raw_text.length > 320 ? "…" : ""}</p>
           <div className="discovery-actions">
             <a className="btn" href={posting.url} target="_blank" rel="noopener noreferrer">Review posting</a>
-            {saved[posting.url] ? <a className="btn primary" href={`#/jobs/${saved[posting.url]}`}>Open saved role</a> :
+            {conflicts[posting.url] ? <a className="btn" href="#/jobs">Review matching saved roles</a> : saved[posting.url] ? <a className="btn primary" href={`#/jobs/${saved[posting.url]}`}>Open saved role</a> :
               <button className="btn primary" disabled={saving !== null || searching || config.loading || !!config.error || !config.data} onClick={() => void save(posting)}>{saving === posting.url ? "Saving…" : "Save to my jobs"}</button>}
           </div>
         </article>)}

@@ -205,21 +205,30 @@ def existing_job(s: Session, job_id: int) -> Job | None:
     ).first()
 
 
+def saved_identities(s: Session, jobs: list[Job]) -> dict[int, Identity | None]:
+    """Batch read server identities, retaining ambiguous mappings as unknown."""
+    mapped: dict[int, Identity | None] = {}
+    ids = [pk(job) for job in jobs]
+    for offset in range(0, len(ids), 500):
+        rows = s.exec(
+            select(JobExternalIdentity).where(
+                col(JobExternalIdentity.job_id).in_(ids[offset : offset + 500])
+            )
+        ).all()
+        for row in rows:
+            if row.job_id in mapped:
+                mapped[row.job_id] = None
+            elif row.provider == "greenhouse":
+                mapped[row.job_id] = Identity("greenhouse", row.board, row.posting_id)
+            elif row.provider == "lever":
+                mapped[row.job_id] = Identity("lever", row.board, row.posting_id)
+            else:
+                mapped[row.job_id] = None
+    return {
+        pk(job): mapped[pk(job)] if pk(job) in mapped else identity_for_url(job.url) for job in jobs
+    }
+
+
 def saved_identity(s: Session, job: Job) -> Identity | None:
     """Read server-owned identity without adopting rows or taking write locks."""
-    rows = s.exec(
-        select(JobExternalIdentity)
-        .where(JobExternalIdentity.job_id == pk(job))
-        .order_by(col(JobExternalIdentity.id))
-        .limit(2)
-    ).all()
-    if not rows:
-        return identity_for_url(job.url)
-    if len(rows) != 1:
-        return None  # Conflicting mappings cannot assert a posting's availability.
-    row = rows[0]
-    if row.provider == "greenhouse":
-        return Identity("greenhouse", row.board, row.posting_id)
-    if row.provider == "lever":
-        return Identity("lever", row.board, row.posting_id)
-    return None
+    return saved_identities(s, [job])[pk(job)]

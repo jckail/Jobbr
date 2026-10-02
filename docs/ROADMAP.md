@@ -85,3 +85,9 @@ backend checks pass. Complete the combined gate and rendered UI acceptance.
 Persisted availability history, broader board completeness/pagination and
 canonical saved-result hydration remain follow-ups; no automatic closing or
 deleting is introduced.
+
+
+Canonical saved-result hydration is now implemented: server-derived identities
+preserve saved links across ATS aliases, and ambiguous saved matches require
+review. Focused backend checks passed; combined verification and rendered
+discovery acceptance remain required before publication.

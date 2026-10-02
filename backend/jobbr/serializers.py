@@ -10,6 +10,15 @@ Json = dict[str, Any]
 
 def job_out(row: JobRow, detail: bool = False) -> Json:
     d = row.job.model_dump(exclude=None if detail else {"raw_text"})
+    d["external_identity"] = (
+        {
+            "provider": row.identity.provider,
+            "board": row.identity.board,
+            "posting_id": row.identity.posting_id,
+        }
+        if row.identity
+        else None
+    )
     d["company"] = row.company.model_dump(include={"id", "name", "domain", "industry"})
     d["match"] = row.match.model_dump(exclude={"id", "job_id", "profile_id"}) if row.match else None
     d["application"] = (
