@@ -57,7 +57,8 @@ export interface Stats {
   score_buckets: { label: string; count: number }[];
   top_matches: { id: number; title: string; company: string; score: number | null }[];
 }
-export interface Config { version: string; llm_enabled: boolean; model: string | null; write_protected: boolean; private_instance: boolean; auth_enabled: boolean; seed_demo: boolean; career_enabled: boolean; cost_estimates_available: boolean }
+export type AIProvider = "openai" | "anthropic";
+export interface Config { version: string; llm_enabled: boolean; model: string | null; ai_provider: AIProvider; ai_provider_label: string; ai_model: string; write_protected: boolean; private_instance: boolean; auth_enabled: boolean; seed_demo: boolean; career_enabled: boolean; cost_estimates_available: boolean }
 
 export interface AuthSession {
   enabled: boolean;
@@ -71,6 +72,7 @@ export interface AuthSession {
 export type CareerKind = "cover_letter" | "interview_prep";
 export interface CareerResult {
   kind: CareerKind;
+  provider?: AIProvider;
   generated_at?: string;
   model: string;
   input_tokens: number;

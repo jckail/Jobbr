@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from typing import Literal, TypeVar
 
 from agents import Agent, ModelSettings, OpenAIResponsesModel, RunConfig, Runner
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from pydantic import BaseModel
 
+from .anthropic_provider import run_anthropic
 from .config import get_settings
 from .models import Job, Profile
 
@@ -45,6 +46,7 @@ class CareerDraft(BaseModel):
 
 
 class CareerResult(BaseModel):
+    provider: Literal["openai", "anthropic"] = "openai"
     kind: CareerKind
     model: str
     draft: CareerDraft
@@ -60,14 +62,27 @@ async def run_structured(
     """One tool-free agent, bounded wall time, turns and output; traces disabled."""
     settings = get_settings()
     if not settings.llm_enabled:
-        raise AIUnavailable("Set JOBBR_OPENAI_API_KEY on the server to enable AI drafting.")
-    async with AsyncOpenAI(
-        api_key=settings.openai_api_key, timeout=settings.ai_timeout_s, max_retries=0
-    ) as client:
+        raise AIUnavailable(f"Configure the selected {settings.ai_provider} API key on the server.")
+    if len(content) > settings.max_input_chars:
+        raise CareerInputError("AI input exceeds the configured limit.")
+    if settings.ai_provider == "anthropic":
+        return await run_anthropic(instructions, content, output_type, settings)
+    async with (
+        DefaultAsyncHttpxClient(
+            trust_env=False, follow_redirects=False, timeout=settings.ai_timeout_s
+        ) as http_client,
+        AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            base_url="https://api.openai.com/v1",
+            timeout=settings.ai_timeout_s,
+            max_retries=0,
+            http_client=http_client,
+        ) as client,
+    ):
         agent = Agent(
             name=name,
             instructions=instructions,
-            model=OpenAIResponsesModel(model=settings.model, openai_client=client),
+            model=OpenAIResponsesModel(model=settings.ai_model, openai_client=client),
             model_settings=ModelSettings(max_tokens=settings.ai_max_output_tokens, store=False),
             output_type=output_type,
         )
@@ -126,7 +141,9 @@ async def generate_career(
 ) -> CareerResult:
     settings = get_settings()
     if not settings.llm_enabled:
-        raise AIUnavailable("AI drafting is unavailable: configure a server-side OpenAI API key.")
+        raise AIUnavailable(
+            f"AI drafting is unavailable: configure the selected {settings.ai_provider} key."
+        )
     if kind not in ("cover_letter", "interview_prep"):
         raise CareerInputError("Choose cover_letter or interview_prep.")
     if not (profile.resume_text.strip() or profile.headline or profile.skills):
@@ -171,7 +188,8 @@ async def generate_career(
         ) from exc
     return CareerResult(
         kind=kind,
-        model=settings.model,
+        model=settings.ai_model,
+        provider=settings.ai_provider,
         draft=draft,
         input_tokens=input_tokens,
         output_tokens=output_tokens,

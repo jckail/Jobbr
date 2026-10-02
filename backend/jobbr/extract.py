@@ -1,4 +1,4 @@
-"""Free JSON-LD first, optional bounded OpenAI agent, then offline heuristics."""
+"""Free JSON-LD first, optional bounded selected AI provider, then offline heuristics."""
 
 import asyncio
 import json
@@ -35,7 +35,25 @@ class Result:
 
 def llm_extract(text: str, hint: str | None = None) -> tuple[JobExtraction, int, int]:
     settings = get_settings()
-    content = json.dumps({"hint": hint, "posting": text[: settings.max_input_chars]})
+    bounded_hint = hint[: min(200, settings.max_input_chars // 8)] if hint else None
+    posting = text[: settings.max_input_chars]
+
+    def pack(prefix: str) -> str:
+        return json.dumps(
+            {"hint": bounded_hint, "posting": prefix}, ensure_ascii=False, separators=(",", ":")
+        )
+
+    content = pack(posting)
+    if len(content) > settings.max_input_chars:
+        # JSON escaping and hint overhead also consume the common provider input budget.
+        low, high = 0, len(posting)
+        while low < high:
+            middle = (low + high + 1) // 2
+            if len(pack(posting[:middle])) <= settings.max_input_chars:
+                low = middle
+            else:
+                high = middle - 1
+        content = pack(posting[:low])
     return asyncio.run(run_structured("Jobbr job extractor", SYSTEM, content, JobExtraction))
 
 
@@ -57,9 +75,12 @@ def extract(
             data, input_tokens, output_tokens = llm_extract(
                 text, hint=" / ".join(x for x in (company, title) if x) or None
             )
-            method, model = ExtractMethod.llm, settings.model
+            method, model = ExtractMethod.llm, settings.ai_model
         except Exception as exc:
-            error = f"OpenAI extraction failed ({type(exc).__name__}); used offline heuristics."
+            error = (
+                f"{settings.ai_provider} extraction failed ({type(exc).__name__}); "
+                "used offline heuristics."
+            )
     if data is None:
         method, data = ExtractMethod.heuristic, heuristic_job(text, title, company)
     if company:

@@ -14,6 +14,7 @@ from tests.conftest import API
 def result():
     return {
         "kind": "cover_letter",
+        "provider": "openai",
         "model": "test-model",
         "input_tokens": 100,
         "output_tokens": 80,
@@ -75,6 +76,33 @@ def test_generation_remains_transient(owner, monkeypatch):
     monkeypatch.setattr("jobbr.api.generate_career", generated)
     assert client.post(f"{API}/jobs/{job_id}/career/cover_letter").status_code == 200
     assert client.get(f"{API}/jobs/{job_id}/career/drafts").json() == []
+
+
+def test_saved_provider_remains_original_after_instance_selection_changes(owner, env):
+    client, job_id = owner
+    path = f"{API}/jobs/{job_id}/career/drafts"
+    original = result()
+    original.update(provider="anthropic", model="claude-test-model")
+    saved = client.post(path, json={"result": original})
+    assert saved.status_code == 201
+    env.setenv("JOBBR_AI_PROVIDER", "openai")
+    config.get_settings.cache_clear()
+    reopened = client.get(f"{path}/{saved.json()['id']}")
+    assert reopened.status_code == 200
+    assert reopened.json()["result"]["provider"] == "anthropic"
+    assert reopened.json()["result"]["model"] == "claude-test-model"
+
+
+def test_legacy_draft_input_defaults_to_openai_and_unknown_provider_is_rejected(owner):
+    client, job_id = owner
+    path = f"{API}/jobs/{job_id}/career/drafts"
+    legacy = result()
+    legacy.pop("provider")
+    response = client.post(path, json={"result": legacy})
+    assert response.status_code == 201
+    assert response.json()["result"]["provider"] == "openai"
+    legacy["provider"] = "unknown"
+    assert client.post(path, json={"result": legacy}).status_code == 422
 
 
 def test_public_read_only_mode_never_exposes_drafts(owner):

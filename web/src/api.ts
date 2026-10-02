@@ -50,6 +50,11 @@ async function req<T>(path: string, init: RequestInit = {}, notifyAuthFailure = 
   return r.status === 204 ? (undefined as T) : r.json();
 }
 const body = (m: string, b: unknown): RequestInit => ({ method: m, body: JSON.stringify(b) });
+const aiHeaders = (config?: Config): HeadersInit | undefined => config ? {
+  "X-Jobbr-AI-Provider": config.ai_provider,
+  "X-Jobbr-AI-Model": config.ai_model,
+  "X-Jobbr-AI-Enabled": String(config.llm_enabled),
+} : undefined;
 
 export const api = {
   session: async () => {
@@ -58,8 +63,8 @@ export const api = {
     return session;
   },
   logout: async () => { await req<void>("/auth/logout", { method: "POST" }); clearSession(); },
-  career: (id: number, kind: CareerKind, signal?: AbortSignal) =>
-    req<CareerResult>(`/jobs/${id}/career/${kind}`, { method: "POST", signal }),
+  career: (id: number, kind: CareerKind, signal?: AbortSignal, config?: Config) =>
+    req<CareerResult>(`/jobs/${id}/career/${kind}`, { method: "POST", signal, headers: aiHeaders(config) }),
   careerDrafts: (id: number) => req<SavedCareerDraft[]>(`/jobs/${id}/career/drafts`),
   saveCareerDraft: (id: number, result: CareerResult) =>
     req<SavedCareerDraft>(`/jobs/${id}/career/drafts`, body("POST", { result })),
@@ -82,10 +87,11 @@ export const api = {
     return req<Job[]>("/jobs?" + qs);
   },
   job: (id: number) => req<Job>(`/jobs/${id}`),
-  addJob: (b: { url?: string; text?: string; company?: string; title?: string }) => req<Job>("/jobs", body("POST", b)),
+  addJob: (b: { url?: string; text?: string; company?: string; title?: string }, config?: Config) =>
+    req<Job>("/jobs", { ...body("POST", b), headers: aiHeaders(config) }),
   patchJob: (id: number, b: Partial<Pick<Job, "title" | "remote_policy" | "comp_min" | "comp_max" | "skills" | "summary">>) =>
     req<Job>(`/jobs/${id}`, body("PATCH", b)),
-  reextract: (id: number) => req<Job>(`/jobs/${id}/reextract`, { method: "POST" }),
+  reextract: (id: number, config?: Config) => req<Job>(`/jobs/${id}/reextract`, { method: "POST", headers: aiHeaders(config) }),
   deleteJob: (id: number) => req<void>(`/jobs/${id}`, { method: "DELETE" }),
   setApplication: (id: number, b: { stage?: Stage; notes?: string; next_step_at?: string | null; note?: string }) =>
     req<Job>(`/jobs/${id}/application`, body("PUT", b)),

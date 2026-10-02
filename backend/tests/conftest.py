@@ -35,6 +35,9 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> pytest.MonkeyPatch:
         "JOBBR_OPENAI_API_KEY",
         "OPENAI_API_KEY",
         "JOBBR_ANTHROPIC_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "JOBBR_AI_PROVIDER",
+        "JOBBR_ANTHROPIC_MODEL",
         "JOBBR_API_TOKEN",
     ):
         monkeypatch.delenv(var, raising=False)

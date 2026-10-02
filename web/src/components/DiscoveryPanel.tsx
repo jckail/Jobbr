@@ -2,8 +2,10 @@ import { useRef, useState, type FormEvent } from "react";
 import { api, errorMessage } from "../api";
 import type { DiscoveryPosting, DiscoverySnapshot } from "../types";
 import { cap } from "../util";
+import { useAsync } from "../ui";
 
 export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
+  const config = useAsync(api.config, []);
   const [provider, setProvider] = useState<"greenhouse" | "lever">("greenhouse");
   const [board, setBoard] = useState("");
   const [company, setCompany] = useState("");
@@ -28,7 +30,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
   };
 
   const save = async (posting: DiscoveryPosting) => {
-    if (inFlight.current) return;
+    if (inFlight.current || config.loading || config.error || !config.data) return;
     const employer = posting.company || company.trim();
     if (!employer) {
       setError("Enter the hiring company name before saving; the board does not provide it.");
@@ -37,7 +39,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
     inFlight.current = true;
     setSaving(posting.source_id); setError("");
     try {
-      const job = await api.addJob({ url: posting.url, text: posting.raw_text, title: posting.title, company: employer });
+      const job = await api.addJob({ url: posting.url, text: posting.raw_text, title: posting.title, company: employer }, config.data);
       setSaved((current) => ({ ...current, [posting.source_id]: job.id }));
       onSaved();
     } catch (failure) { setError(errorMessage(failure)); }
@@ -48,6 +50,7 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
     <details className="card discovery-panel">
       <summary><span>Find live opportunities</span><span className="muted">Search a company’s career board</span></summary>
       <p className="muted">Find current openings on Greenhouse or Lever, review the posting, then choose what to save. Nothing is imported automatically.</p>
+      {config.loading ? <p role="status">Checking extraction settings…</p> : config.error ? <div><p role="alert">{errorMessage(config.error)}</p><button className="btn" onClick={config.reload}>Retry extraction settings</button></div> : config.data && <p className="muted">{config.data.llm_enabled ? `Saving may send posting text to ${config.data.ai_provider_label} (${config.data.ai_model}) for extraction and incur API charges. Dollar cost is not estimated. Your resume is not included.` : "Saving uses structured posting data and offline heuristics. AI extraction is unavailable for the selected server provider."}</p>}
       <form onSubmit={search} className="stack">
         <div className="grid2">
           <label className="field">Career board provider
@@ -83,11 +86,10 @@ export default function DiscoveryPanel({ onSaved }: { onSaved: () => void }) {
           <div className="discovery-actions">
             <a className="btn" href={posting.url} target="_blank" rel="noopener noreferrer">Review posting</a>
             {saved[posting.source_id] ? <a className="btn primary" href={`#/jobs/${saved[posting.source_id]}`}>Open saved role</a> :
-              <button className="btn primary" disabled={saving !== null || searching} onClick={() => void save(posting)}>{saving === posting.source_id ? "Saving…" : "Save to my jobs"}</button>}
+              <button className="btn primary" disabled={saving !== null || searching || config.loading || !!config.error || !config.data} onClick={() => void save(posting)}>{saving === posting.source_id ? "Saving…" : "Save to my jobs"}</button>}
           </div>
         </article>)}
       </div>}
-      <p className="muted">Saving uses your configured job extraction. When AI extraction is enabled, the posting text is sent to OpenAI; your resume is not included in extraction.</p>
     </details>
   );
 }

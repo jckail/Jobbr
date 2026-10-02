@@ -13,7 +13,7 @@ flowchart LR
   U[URL or pasted text] --> F[safefetch<br/>SSRF-guarded]
   F --> E{extract}
   E -->|schema.org JobPosting| J[JSON-LD, free]
-  E -->|API key set| L[OpenAI Agents SDK<br/>structured output]
+  E -->|API key set| L[Selected provider<br/>OpenAI Agents or Claude]
   E -->|fallback| H[heuristics + skill taxonomy]
   J & L & H --> DB[(SQLModel DB)]
   DB --> M[matching<br/>skills 55 · level 15 · location 15 · pay 15]
@@ -60,8 +60,11 @@ Production at `https://jckail.com/jobbr` remains pending local acceptance, regis
 | `DATABASE_URL` | `sqlite:///./jobbr.db` | SQLite or Postgres (`postgresql://…`) |
 | `BASE_PATH` | `/jobbr` | Mount path |
 | `API_TOKEN` | unset | If set, writes require `X-Jobbr-Token` (public read-only demo) |
-| `OPENAI_API_KEY` | unset | Enables OpenAI Agents SDK extraction and drafting |
-| `MODEL` | `gpt-4.1-mini` | Extraction model |
+| `AI_PROVIDER` | `openai` | Select `openai` or `anthropic`; no provider fallback |
+| `OPENAI_API_KEY` | unset | Enables the selected OpenAI Agents SDK path |
+| `ANTHROPIC_API_KEY` | unset | Enables the selected Claude Messages path |
+| `ANTHROPIC_MODEL` | `claude-sonnet-4-6` | Claude structured-output model |
+| `MODEL` | `gpt-4.1-mini` | OpenAI extraction/drafting model |
 | `SEED_DEMO` | `false` | Load demo data into an empty DB |
 
 Private production access uses `JOBBR_PRIVATE_INSTANCE=true` with an API token or configured OpenAI sign-in. See [authentication](docs/AUTH.md), [AI behavior](docs/AI.md), and [database migrations](docs/DATABASE.md). The database is currently single-owner; sign-in does not yet imply multi-user isolation.

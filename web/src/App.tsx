@@ -82,7 +82,7 @@ function Shell() {
   const panel = <SessionPanel config={config} session={access.session} loading={access.loading} error={access.error} onRefresh={refresh} />;
   let page;
   if (!allowed) page = <section className="card access-gate">{panel}</section>;
-  else if (jobId) page = <JobDetail key={jobId} id={+jobId} rev={rev} onChange={bump} llmEnabled={config?.llm_enabled ?? false} />;
+  else if (jobId) page = <JobDetail key={jobId} id={+jobId} rev={rev} onChange={bump} llmEnabled={config?.career_enabled ?? false} config={config} />;
   else if (path === "/jobs") page = <Jobs rev={rev} onAdd={() => setAdding(true)} />;
   else if (path === "/pipeline") page = <Pipeline rev={rev} onChange={bump} />;
   else if (path === "/profile") page = <ProfilePage onChange={bump} />;
@@ -93,10 +93,10 @@ function Shell() {
     <AppShell path={path} accessAllowed={allowed} onAdd={() => allowed ? setAdding(true) : setAccessOpen(true)}
       onThemeToggle={() => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark")}
       authControl={<button className="btn ghost" onClick={() => setAccessOpen(true)}>{accessLabel}</button>}
-      footer={<><div>{config?.llm_enabled ? "OpenAI extraction enabled" : "Deterministic extraction"}</div><div>{config ? `v${config.version}` : "Checking connection"}</div></>}>
+      footer={<><div>{config?.llm_enabled ? `${config.ai_provider_label} extraction · ${config.ai_model}` : "Deterministic extraction"}</div><div>{config ? `v${config.version}` : "Checking connection"}</div></>}>
       {page}
     </AppShell>
-    {adding && allowed && <AddJob onClose={() => setAdding(false)} onDone={() => { setAdding(false); bump(); }} />}
+    {adding && allowed && config && <AddJob config={config} onClose={() => setAdding(false)} onDone={() => { setAdding(false); bump(); }} />}
     {accessOpen && <Modal title="Workspace access" onClose={() => setAccessOpen(false)}>{panel}</Modal>}
   </>;
 }

@@ -38,6 +38,30 @@ def require_token(request: Request, x_jobbr_token: Annotated[str | None, Header(
 write = [Depends(require_token)]
 
 
+def require_ai_selection(
+    x_jobbr_ai_provider: Annotated[str | None, Header(max_length=20)] = None,
+    x_jobbr_ai_model: Annotated[str | None, Header(max_length=200)] = None,
+    x_jobbr_ai_enabled: Annotated[str | None, Header(max_length=5)] = None,
+) -> None:
+    """Reject stale browser disclosures before any AI-capable action runs."""
+    expected = (x_jobbr_ai_provider, x_jobbr_ai_model, x_jobbr_ai_enabled)
+    if all(value is None for value in expected):
+        return  # Existing programmatic clients use explicit server configuration.
+    if any(value is None for value in expected):
+        raise HTTPException(422, "Provide the complete AI settings selection.")
+    settings = get_settings()
+    actual = (
+        settings.ai_provider,
+        settings.ai_model,
+        "true" if settings.llm_enabled else "false",
+    )
+    if expected != actual:
+        raise HTTPException(409, "AI settings changed. Refresh and review the disclosure again.")
+
+
+ai_write = [*write, Depends(require_ai_selection)]
+
+
 def require_access(request: Request, x_jobbr_token: Annotated[str | None, Header()] = None) -> None:
     auth: AuthService = request.app.state.auth
     if auth.settings.auth_enabled:
@@ -83,7 +107,17 @@ def config(request: Request) -> Json:
     return {
         "version": __version__,
         "llm_enabled": st.llm_enabled,
-        "model": st.model if st.llm_enabled else None,
+        "model": st.ai_model if st.llm_enabled else None,
+        "ai_provider": st.ai_provider,
+        "ai_provider_label": "Claude" if st.ai_provider == "anthropic" else "OpenAI",
+        "ai_model": st.ai_model,
+        "available_ai_providers": {
+            "openai": {"configured": bool((st.openai_api_key or "").strip()), "model": st.model},
+            "anthropic": {
+                "configured": bool((st.anthropic_api_key or "").strip()),
+                "model": st.anthropic_model,
+            },
+        },
         "write_protected": bool(st.api_token),
         "private_instance": st.private_instance,
         "auth_enabled": request.app.state.auth.settings.auth_enabled,
@@ -109,7 +143,7 @@ def list_jobs(
     return [serializers.job_out(r) for r in sorted(rows, key=repo.SORTS[sort])]
 
 
-@router.post("/jobs", status_code=201, dependencies=write)
+@router.post("/jobs", status_code=201, dependencies=ai_write)
 def add_job(body: JobCreate, s: SessionDep) -> Json:
     try:
         job = services.ingest(s, body)
@@ -135,7 +169,7 @@ def patch_job(job_id: int, body: JobPatch, s: SessionDep) -> Json:
     return _detail(s, job_id)
 
 
-@router.post("/jobs/{job_id}/reextract", dependencies=write)
+@router.post("/jobs/{job_id}/reextract", dependencies=ai_write)
 def reextract(job_id: int, s: SessionDep) -> Json:
     try:
         services.reextract(s, _row(s, job_id).job)
@@ -227,7 +261,7 @@ def delete_career_draft(job_id: int, draft_id: int, s: SessionDep) -> None:
     s.commit()
 
 
-@router.post("/jobs/{job_id}/career/{kind}", dependencies=write)
+@router.post("/jobs/{job_id}/career/{kind}", dependencies=ai_write)
 async def career_assistance(
     job_id: int, kind: Literal["cover_letter", "interview_prep"], s: SessionDep
 ) -> CareerResult:

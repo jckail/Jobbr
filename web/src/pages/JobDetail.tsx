@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api";
 import CareerPanel from "../components/CareerPanel";
-import { STAGES, type Stage } from "../types";
+import { STAGES, type Config, type Stage } from "../types";
 import { Chips, CompanyLogo, Empty, Icon, ICONS, Score, StagePill, useAsync, useGuarded } from "../ui";
 import { ago, cap, comp } from "../util";
 
@@ -12,7 +12,7 @@ function localDate(value: string | null | undefined): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-export default function JobDetail({ id, rev, onChange, llmEnabled }: { id: number; rev: number; onChange: () => void; llmEnabled: boolean }) {
+export default function JobDetail({ id, rev, onChange, llmEnabled, config }: { id: number; rev: number; onChange: () => void; llmEnabled: boolean; config?: Config }) {
   const { data: j, loading, error, reload } = useAsync(() => api.job(id), [id, rev]);
   const [notes, setNotes] = useState("");
   const [reminder, setReminder] = useState("");
@@ -51,9 +51,10 @@ export default function JobDetail({ id, rev, onChange, llmEnabled }: { id: numbe
               <div><dt>Location</dt><dd>{j.locations.join(" · ") || "—"}</dd></div>
               <div><dt>Level</dt><dd>{cap(j.seniority)}{j.years_experience_min ? ` · ${j.years_experience_min}+ yrs` : ""}</dd></div>
             </dl>
+            {config?.llm_enabled && <p className="muted">Re-extraction may send posting text to {config.ai_provider_label} ({config.ai_model}) and incur API charges. Dollar cost is not estimated; your resume is not included.</p>}
             <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
               {j.url && <a className="btn primary" href={j.url} target="_blank" rel="noreferrer noopener"><Icon d={ICONS.ext} />Open posting</a>}
-              <button className="btn" onClick={() => run(() => api.reextract(j.id), "Re-extracted")}><Icon d={ICONS.refresh} />Re-extract</button>
+              <button className="btn" disabled={!config} onClick={() => run(() => api.reextract(j.id, config), "Re-extracted")}><Icon d={ICONS.refresh} />Re-extract</button>
               <button className="btn danger" onClick={() => confirm("Delete this job?") && run(async () => { await api.deleteJob(j.id); window.location.hash = "/jobs"; }, "Deleted")}><Icon d={ICONS.trash} />Delete</button>
             </div>
           </section>
@@ -66,7 +67,7 @@ export default function JobDetail({ id, rev, onChange, llmEnabled }: { id: numbe
           </section>
           {j.responsibilities.length > 0 && <section className="card"><header><h2>What you'll do</h2></header><ul className="clean">{j.responsibilities.map((r) => <li key={r}>{r}</li>)}</ul></section>}
           {j.qualifications.length > 0 && <section className="card"><header><h2>What they want</h2></header><ul className="clean">{j.qualifications.map((r) => <li key={r}>{r}</li>)}</ul></section>}
-          {j.extractions?.[0] && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Extracted via {j.extractions[0].method}{j.extractions[0].model ? ` (${j.extractions[0].model})` : ""} in {j.extractions[0].latency_ms} ms{j.extractions[0].cost_usd ? ` · $${j.extractions[0].cost_usd.toFixed(4)}` : ""}{j.extractions[0].error ? ` · ${j.extractions[0].error}` : ""}</p>}
+          {j.extractions?.[0] && <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Extracted via {j.extractions[0].method}{j.extractions[0].model ? ` (${j.extractions[0].model})` : ""} in {j.extractions[0].latency_ms} ms{j.extractions[0].cost_usd ? ` · $${j.extractions[0].cost_usd.toFixed(4)}` : j.extractions[0].method === "llm" ? " · dollar cost not estimated" : ""}{j.extractions[0].error ? ` · ${j.extractions[0].error}` : ""}</p>}
         </div>
 
         <aside className="stack">

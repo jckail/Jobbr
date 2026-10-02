@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,7 +18,13 @@ class Settings(BaseSettings):
     openai_api_key: str | None = Field(
         default=None, validation_alias=AliasChoices("JOBBR_OPENAI_API_KEY", "OPENAI_API_KEY")
     )
+    ai_provider: Literal["openai", "anthropic"] = "openai"
+    anthropic_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("JOBBR_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"),
+    )
     model: str = "gpt-4.1-mini"
+    anthropic_model: str = "claude-sonnet-4-6"
     ai_timeout_s: float = Field(default=45.0, gt=0, le=120)
     ai_max_turns: int = Field(default=2, ge=1, le=5)
     ai_max_output_tokens: int = Field(default=3000, ge=256, le=8000)
@@ -27,7 +34,12 @@ class Settings(BaseSettings):
 
     @property
     def llm_enabled(self) -> bool:
-        return bool(self.openai_api_key and self.openai_api_key.strip())
+        key = self.openai_api_key if self.ai_provider == "openai" else self.anthropic_api_key
+        return bool(key and key.strip())
+
+    @property
+    def ai_model(self) -> str:
+        return self.model if self.ai_provider == "openai" else self.anthropic_model
 
     @property
     def base(self) -> str:

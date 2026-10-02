@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { api, errorMessage, getToken } from "../api";
-import type { CareerKind, CareerResult, Job, SavedCareerDraft } from "../types";
+import { api, ApiError, errorMessage, getToken } from "../api";
+import type { AIProvider, CareerKind, CareerResult, Job, SavedCareerDraft } from "../types";
 import { useAsync } from "../ui";
 import { parseDate } from "../util";
 
+function providerLabel(provider?: AIProvider): string {
+  return provider === "anthropic" ? "Claude" : "OpenAI";
+}
 function printable(result: CareerResult): string {
   const draft = result.draft;
   return [result.kind === "cover_letter" ? "Cover letter — review before sending" : "Interview preparation — review before use",
@@ -11,7 +14,7 @@ function printable(result: CareerResult): string {
     `Strengths\n${draft.strengths.join("\n")}`, `Gaps\n${draft.gaps.join("\n")}`,
     `Questions to ask\n${draft.questions_to_ask.join("\n")}`, `Profile evidence\n${draft.evidence_quotes.join("\n")}`,
     `Review notes\n${draft.review_notes.join("\n")}`,
-    `Model: ${result.model}; input tokens: ${result.input_tokens}; output tokens: ${result.output_tokens}`].filter(Boolean).join("\n\n");
+    `Provider: ${providerLabel(result.provider)}; model: ${result.model}; input tokens: ${result.input_tokens}; output tokens: ${result.output_tokens}`].filter(Boolean).join("\n\n");
 }
 function Items({ title, items }: { title: string; items: string[] }) {
   return items.length ? <div><h3>{title}</h3><ul className="clean">{items.map((item, index) => <li key={index}>{item}</li>)}</ul></div> : null;
@@ -29,6 +32,11 @@ export default function CareerPanel({ job, enabled }: { job: Job; enabled: boole
   const [savedStatus, setSavedStatus] = useState("");
   const persistenceRunning = useRef(false);
   const access = useAsync(api.config, []);
+  const selectedProvider = access.data?.ai_provider;
+  const selectedModel = access.data?.ai_model;
+  const selectedEnabled = access.data?.llm_enabled;
+  const selectedLabel = access.data?.ai_provider_label;
+  const generationEnabled = enabled && !!access.data?.career_enabled && !access.loading && !access.error;
   const draftAccess = !!access.data && (access.data.auth_enabled || (access.data.write_protected && !!getToken()));
   const drafts = useAsync(() => draftAccess ? api.careerDrafts(job.id) : Promise.resolve([] as SavedCareerDraft[]), [job.id, draftAccess]);
   const working = busy !== null || saving || deleting !== null;
@@ -42,19 +50,22 @@ export default function CareerPanel({ job, enabled }: { job: Job; enabled: boole
     setResult(null); setError(""); setCopyStatus(""); setConsent(false); setBusy(null);
     setSavedId(null); setSaving(false); setDeleting(null); setSavedError(""); setSavedStatus("");
     return () => { generation.current += 1; controller.current?.abort(); };
-  }, [job.id, roleFacts]);
+  }, [job.id, roleFacts, selectedProvider, selectedModel, selectedEnabled]);
   const generate = async (kind: CareerKind) => {
-    if (!consent || !enabled || running.current || persistenceRunning.current) return;
+    if (!consent || !generationEnabled || running.current || persistenceRunning.current) return;
     running.current = true;
     const attempt = ++generation.current;
     const abort = new AbortController(); controller.current = abort;
     const timeout = window.setTimeout(() => abort.abort(), 130_000);
     setBusy(kind); setError(""); setResult(null); setCopyStatus(""); setSavedId(null); setSavedStatus("");
     try {
-      const response = await api.career(job.id, kind, abort.signal);
+      const response = await api.career(job.id, kind, abort.signal, access.data);
       if (attempt === generation.current) setResult(response);
     } catch (failure) {
-      if (attempt === generation.current) setError(abort.signal.aborted ? "The request timed out. No result was received; check the server before retrying." : errorMessage(failure));
+      if (attempt === generation.current) {
+        if (failure instanceof ApiError && failure.status === 409) setConsent(false);
+        setError(abort.signal.aborted ? "The request timed out. No result was received; check the server before retrying." : errorMessage(failure));
+      }
     } finally {
       window.clearTimeout(timeout);
       if (attempt === generation.current) { running.current = false; setBusy(null); }
@@ -111,9 +122,9 @@ export default function CareerPanel({ job, enabled }: { job: Job; enabled: boole
   };
   return <section className="card career-panel" aria-busy={working}>
     <header><div><h2>Prepare for this role</h2><p className="muted">Draft a letter or practice interview answers from your saved profile.</p></div></header>
-    {!enabled ? <p role="status">AI drafting is unavailable. The instance owner needs to configure a server-side OpenAI API key. Your job tracking and fit scores remain available.</p> : <>
-      <p className="muted">On your request, Jobbr sends your saved resume excerpt, name, headline, skills, years of experience and seniority, together with this role’s posting and extracted requirements, to OpenAI. This may use paid API credits. <a href="#/profile">Review your saved profile</a> first.</p>
-      <label className="consent-line"><input type="checkbox" checked={consent} disabled={working} onChange={(event) => setConsent(event.target.checked)} /> I agree to send those profile and role details to OpenAI for this draft.</label>
+    {access.loading ? <p role="status">Checking AI settings…</p> : !generationEnabled ? <p role="status">AI drafting is unavailable{selectedLabel ? ` for ${selectedLabel} (${selectedModel})` : ""}. The instance owner must configure credentials for the selected server provider. Your job tracking, fit scores and protected saved drafts remain available.</p> : <>
+      <p className="muted">On your request, Jobbr sends your saved resume excerpt, name, headline, skills, years of experience and seniority, together with this role’s posting and extracted requirements, to {selectedLabel} ({selectedModel}). This may incur API charges; dollar cost is not estimated. <a href="#/profile">Review your saved profile</a> first.</p>
+      <label className="consent-line"><input type="checkbox" checked={consent} disabled={working} onChange={(event) => setConsent(event.target.checked)} /> I agree to send those profile and role details to {selectedLabel} ({selectedModel}) for this draft and accept potentially paid API usage.</label>
       <div className="career-actions">
         <button className="btn primary" disabled={!consent || working} onClick={() => generate("cover_letter")}>{busy === "cover_letter" ? "Drafting letter…" : "Draft cover letter"}</button>
         <button className="btn" disabled={!consent || working} onClick={() => generate("interview_prep")}>{busy === "interview_prep" ? "Preparing questions…" : "Prepare for interview"}</button>
@@ -129,7 +140,7 @@ export default function CareerPanel({ job, enabled }: { job: Job; enabled: boole
         : drafts.loading ? <p role="status">Loading saved drafts…</p>
         : drafts.error ? <div><p role="alert">{errorMessage(drafts.error)}</p><button className="btn" onClick={drafts.reload}>Retry saved drafts</button></div>
         : drafts.data?.length ? <ul className="clean">{drafts.data.map(saved => <li key={saved.id}>
-          <p><strong>{saved.result.kind === "cover_letter" ? "Cover letter" : "Interview preparation"}</strong> · saved {parseDate(saved.created_at).toLocaleString()}</p>
+          <p><strong>{saved.result.kind === "cover_letter" ? "Cover letter" : "Interview preparation"}</strong> · {providerLabel(saved.result.provider)} · {saved.result.model} · saved {parseDate(saved.created_at).toLocaleString()}</p>
           <div className="career-actions"><button className="btn" disabled={working} onClick={() => open(saved)} aria-label={`Open ${saved.result.kind === "cover_letter" ? "cover letter" : "interview preparation"} draft saved ${parseDate(saved.created_at).toLocaleString()}`}>Open draft</button><button className="btn danger" disabled={working} onClick={() => void remove(saved)} aria-label={`Delete ${saved.result.kind === "cover_letter" ? "cover letter" : "interview preparation"} draft saved ${parseDate(saved.created_at).toLocaleString()}`}>{deleting === saved.id ? "Deleting…" : "Delete draft"}</button></div>
         </li>)}</ul> : <p>No saved drafts for this role yet.</p>}
       {savedError && <p role="alert" className="career-error">{savedError}</p>}
@@ -149,7 +160,7 @@ export default function CareerPanel({ job, enabled }: { job: Job; enabled: boole
       <Items title="Questions to ask the employer" items={result.draft.questions_to_ask} />
       <details><summary>Supporting profile evidence</summary><ul className="clean">{result.draft.evidence_quotes.map((quote, index) => <li key={index}><q>{quote}</q></li>)}</ul></details>
       <Items title="Review notes" items={result.draft.review_notes} />
-      <p className="muted">Model: {result.model} · {result.input_tokens.toLocaleString()} input tokens · {result.output_tokens.toLocaleString()} output tokens. Dollar cost is not estimated.</p>
+      <p className="muted">Provider: {providerLabel(result.provider)} · Model: {result.model} · {result.input_tokens.toLocaleString()} input tokens · {result.output_tokens.toLocaleString()} output tokens. Dollar cost is not estimated.</p>
     </div>}
   </section>;
 }

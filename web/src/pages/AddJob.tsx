@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { api, errorMessage } from "../api";
+import type { Config } from "../types";
 import { Icon, ICONS, Modal, useToast } from "../ui";
 
-export default function AddJob({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+export default function AddJob({ config, onClose, onDone }: { config: Config; onClose: () => void; onDone: () => void }) {
   const [mode, setMode] = useState<"url" | "text">("url");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
@@ -15,7 +16,7 @@ export default function AddJob({ onClose, onDone }: { onClose: () => void; onDon
     e.preventDefault();
     setBusy(true); setErr("");
     try {
-      const j = await api.addJob(mode === "url" ? { url: url.trim() } : { text, company: company.trim() || undefined });
+      const j = await api.addJob(mode === "url" ? { url: url.trim() } : { text, company: company.trim() || undefined }, config);
       toast(`Added ${j.title} · match ${j.match?.score ?? "–"}`);
       onDone();
       window.location.hash = `/jobs/${j.id}`;
@@ -29,6 +30,7 @@ export default function AddJob({ onClose, onDone }: { onClose: () => void; onDon
   return (
     <Modal title="Add a job" onClose={onClose}>
       <form onSubmit={submit}>
+        <p className="muted">{config.llm_enabled ? `Adding this job may send the posting text to ${config.ai_provider_label} (${config.ai_model}) for extraction and incur API charges. Dollar cost is not estimated. Your resume is not included.` : "Extraction uses structured posting data and offline heuristics. AI extraction is unavailable for the selected server provider."}</p>
         <div className="tabs" role="tablist">
           <button type="button" role="tab" aria-selected={mode === "url"} onClick={() => setMode("url")}>From URL</button>
           <button type="button" role="tab" aria-selected={mode === "text"} onClick={() => setMode("text")}>Paste text</button>

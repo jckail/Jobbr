@@ -38,6 +38,7 @@ class SavedContent(BaseModel):
 class SavedResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: CareerKind
+    provider: Literal["openai", "anthropic"] = "openai"
     model: str = Field(min_length=1, max_length=200)
     draft: SavedContent
     input_tokens: int = Field(default=0, ge=0, le=10_000_000)
