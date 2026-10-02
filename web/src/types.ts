@@ -108,6 +108,35 @@ export interface SavedCareerDraft {
   source_fingerprint: string;
   result: CareerResult;
 }
+export interface TailoringDraft {
+  resume_text: string;
+  changes: { description: string; evidence_quotes: string[] }[];
+  gaps: string[];
+  review_notes: string[];
+}
+export interface TailoringResult {
+  kind: "resume_tailoring";
+  receipt_id: string;
+  source: {
+    revision_id: number;
+    revision_fingerprint: string;
+    job_id: number;
+    job_fingerprint: string;
+    input_fingerprint: string;
+  };
+  provider: AIProvider;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  generated_at: string;
+  requires_review: boolean;
+  draft: TailoringDraft;
+}
+export interface SavedTailoringDraft extends TailoringResult {
+  id: number;
+  created_at: string;
+  user_edited: boolean;
+}
 export interface ResumePreview { text: string; page_count: number; filename: string }
 
 export type DiscoveryProvider = "greenhouse" | "lever";

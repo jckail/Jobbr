@@ -1,4 +1,4 @@
-import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, Stage, Stats } from "./types";
+import type { AuthSession, CareerKind, CareerResult, Config, DiscoveryProvider, DiscoverySnapshot, Job, Profile, ProfileRevision, ProfileRevisionSummary, ProfileSnapshot, ResumePreview, SavedCareerDraft, SavedTailoringDraft, Stage, Stats, TailoringDraft, TailoringResult } from "./types";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 const TOKEN_KEY = "jobbr.token";
@@ -41,7 +41,9 @@ async function req<T>(path: string, init: RequestInit = {}, notifyAuthFailure = 
   if (!r.ok) {
     let msg = r.statusText;
     try { const b = await r.json(); msg = typeof b.detail === "string" ? b.detail : JSON.stringify(b.detail); } catch { /* non-JSON server error */ }
-    if (notifyAuthFailure && r.status === 401 && !path.startsWith("/auth/") && path !== "/config") {
+    if (notifyAuthFailure && r.status === 401 && (path === "/auth/logout" || (!path.startsWith("/auth/") && path !== "/config"))) {
+      // An older request must not discard a replacement entered while it was pending.
+      if (token && getToken() === token) setToken("");
       clearSession();
       window.dispatchEvent(new Event("jobbr:access-expired"));
     }
@@ -70,6 +72,16 @@ export const api = {
     req<SavedCareerDraft>(`/jobs/${id}/career/drafts`, body("POST", { result })),
   deleteCareerDraft: (id: number, draftId: number) =>
     req<void>(`/jobs/${id}/career/drafts/${draftId}`, { method: "DELETE" }),
+  tailorResume: (id: number, revisionId: number, config: Config, signal?: AbortSignal) =>
+    req<TailoringResult>(`/jobs/${id}/tailoring`, { ...body("POST", { source_revision_id: revisionId }), headers: aiHeaders(config), signal }),
+  tailoringDrafts: (id: number) => req<SavedTailoringDraft[]>(`/jobs/${id}/tailoring/drafts`),
+  tailoringDraft: (id: number, draftId: number) => req<SavedTailoringDraft>(`/jobs/${id}/tailoring/drafts/${draftId}`),
+  saveTailoringDraft: (id: number, receiptId: string, draft: TailoringDraft) =>
+    req<SavedTailoringDraft>(`/jobs/${id}/tailoring/drafts`, body("POST", { receipt_id: receiptId, draft, review_acknowledged: true })),
+  deleteTailoringDraft: (id: number, draftId: number) =>
+    req<void>(`/jobs/${id}/tailoring/drafts/${draftId}`, { method: "DELETE" }),
+  acceptTailoringDraft: (id: number, draftId: number, expectedRevision: number) =>
+    req<Profile>(`/jobs/${id}/tailoring/drafts/${draftId}/accept`, body("POST", { expected_revision: expectedRevision, review_acknowledged: true })),
   previewResume: (file: File) => {
     const form = new FormData();
     form.append("file", file);

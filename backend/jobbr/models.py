@@ -184,7 +184,32 @@ class SavedCareerDraft(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=utcnow)
 
 
-def pk(row: Company | Job | Application | Profile | ProfileRevision) -> int:
+class TailoringReceipt(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+    profile_id: int = Field(foreign_key="profile.id", index=True)
+    job_id: int
+    # Pending metadata does not prevent source/job deletion; completion and save recheck.
+    source_revision_id: int
+    provenance: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    original_hash: str | None = None
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+    expires_at: NaiveDatetime = Field(index=True)
+
+
+class SavedTailoringDraft(SQLModel, table=True):
+    __table_args__ = {"sqlite_autoincrement": True}
+    id: int | None = Field(default=None, primary_key=True)
+    profile_id: int = Field(foreign_key="profile.id", index=True)
+    job_id: int = Field(foreign_key="job.id", index=True)
+    source_revision_id: int = Field(foreign_key="profilerevision.id", index=True)
+    receipt_id: str
+    provenance: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    draft: dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    user_edited: bool = False
+    created_at: NaiveDatetime = Field(default_factory=utcnow)
+
+
+def pk(row: Company | Job | Application | Profile | ProfileRevision | SavedTailoringDraft) -> int:
     """Primary key of a persisted row (narrows Optional[int] for type checkers)."""
     if row.id is None:
         raise ValueError(f"{type(row).__name__} has not been flushed yet")

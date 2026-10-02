@@ -1,8 +1,9 @@
 """Read-side queries. One place owns the Job⋈Company⟕Match⟕Application join."""
 
 from dataclasses import dataclass
+from datetime import datetime
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, delete, func
 from sqlmodel import Session, col, select
 
 from .models import (
@@ -14,7 +15,9 @@ from .models import (
     Match,
     ProfileRevision,
     ProfileRevisionHead,
+    SavedTailoringDraft,
     Stage,
+    TailoringReceipt,
 )
 
 
@@ -126,4 +129,103 @@ def profile_revisions(s: Session, profile_id: int, limit: int) -> list[ProfileRe
             .order_by(col(ProfileRevision.saved_at).desc(), col(ProfileRevision.id).desc())
             .limit(limit)
         ).all()
+    )
+
+
+def tailoring_job(s: Session, job_id: int) -> tuple[Job, Company] | None:
+    statement = (
+        select(Job, Company)
+        .join(Company, col(Company.id) == col(Job.company_id))
+        .where(Job.id == job_id)
+        .execution_options(populate_existing=True)
+    )
+    row = s.exec(statement).first()
+    return (row[0], row[1]) if row is not None else None
+
+
+def tailoring_receipt_count(s: Session, profile_id: int) -> int:
+    return s.exec(
+        select(func.count())
+        .select_from(TailoringReceipt)
+        .where(TailoringReceipt.profile_id == profile_id)
+    ).one()
+
+
+def tailoring_receipt(
+    s: Session, profile_id: int, job_id: int, receipt_id: str
+) -> TailoringReceipt | None:
+    return s.exec(
+        select(TailoringReceipt)
+        .where(
+            TailoringReceipt.profile_id == profile_id,
+            TailoringReceipt.job_id == job_id,
+            TailoringReceipt.id == receipt_id,
+        )
+        .execution_options(populate_existing=True)
+    ).first()
+
+
+def tailoring_draft_count(s: Session, profile_id: int, job_id: int) -> int:
+    return s.exec(
+        select(func.count())
+        .select_from(SavedTailoringDraft)
+        .where(SavedTailoringDraft.profile_id == profile_id, SavedTailoringDraft.job_id == job_id)
+    ).one()
+
+
+def tailoring_reference_count(s: Session, profile_id: int, revision_id: int) -> int:
+    return s.exec(
+        select(func.count())
+        .select_from(SavedTailoringDraft)
+        .where(
+            SavedTailoringDraft.profile_id == profile_id,
+            SavedTailoringDraft.source_revision_id == revision_id,
+        )
+    ).one()
+
+
+def tailoring_draft(
+    s: Session, profile_id: int, job_id: int, draft_id: int
+) -> SavedTailoringDraft | None:
+    return s.exec(
+        select(SavedTailoringDraft)
+        .where(
+            SavedTailoringDraft.profile_id == profile_id,
+            SavedTailoringDraft.job_id == job_id,
+            SavedTailoringDraft.id == draft_id,
+        )
+        .execution_options(populate_existing=True)
+    ).first()
+
+
+def tailoring_drafts(
+    s: Session, profile_id: int, job_id: int, limit: int
+) -> list[SavedTailoringDraft]:
+    return list(
+        s.exec(
+            select(SavedTailoringDraft)
+            .where(
+                SavedTailoringDraft.profile_id == profile_id, SavedTailoringDraft.job_id == job_id
+            )
+            .order_by(
+                col(SavedTailoringDraft.created_at).desc(), col(SavedTailoringDraft.id).desc()
+            )
+            .limit(limit)
+        ).all()
+    )
+
+
+def purge_expired_tailoring_receipts(s: Session, profile_id: int, now: datetime) -> None:
+    s.execute(
+        delete(TailoringReceipt).where(
+            col(TailoringReceipt.profile_id) == profile_id, col(TailoringReceipt.expires_at) <= now
+        )
+    )
+
+
+def delete_tailoring_receipt(s: Session, profile_id: int, receipt_id: str) -> None:
+    s.execute(
+        delete(TailoringReceipt).where(
+            col(TailoringReceipt.profile_id) == profile_id, col(TailoringReceipt.id) == receipt_id
+        )
     )

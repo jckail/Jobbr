@@ -3,15 +3,20 @@
 import hashlib
 import json
 import re
+import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
+from pydantic import ValidationError
 from sqlalchemy import update
 from sqlmodel import Session, col, select
 
-from . import matching, repo, serializers
+from . import matching, repo, serializers, tailoring
 from .auth_models import AuthStoreGuard
+from .career import AIUnavailable
+from .config import Settings, get_settings
 from .extract import Result, extract
 from .models import (
     Application,
@@ -24,7 +29,9 @@ from .models import (
     ProfileRevision,
     ProfileRevisionHead,
     SavedCareerDraft,
+    SavedTailoringDraft,
     Stage,
+    TailoringReceipt,
     pk,
     utcnow,
 )
@@ -212,6 +219,10 @@ def delete_revision(s: Session, p: Profile, revision_id: int, expected: int) -> 
     row = revision_find(s, p, revision_id)
     if head.active_revision_id == revision_id:
         raise RevisionConflict("Activate another revision before deleting this one.")
+    if repo.tailoring_reference_count(s, pk(p), revision_id):
+        raise RevisionConflict(
+            "Delete saved tailoring drafts referring to this revision before deleting it."
+        )
     s.delete(row)
     head.version += 1
     s.add(head)
@@ -382,6 +393,9 @@ def patch_job(s: Session, job: Job, body: JobPatch) -> Job:
 def delete_job(s: Session, job: Job) -> None:
     """Delete a job and everything hanging off it (children first; no ORM cascades defined)."""
     job_id = pk(job)
+    _profile_lock(s, get_profile(s))
+    for receipt in s.exec(select(TailoringReceipt).where(TailoringReceipt.job_id == job_id)):
+        s.delete(receipt)
     for app in s.exec(select(Application).where(Application.job_id == job_id)):
         for ev in s.exec(
             select(ApplicationEvent).where(ApplicationEvent.application_id == pk(app))
@@ -389,7 +403,7 @@ def delete_job(s: Session, job: Job) -> None:
             s.delete(ev)
         s.flush()
         s.delete(app)
-    for model in (Match, Extraction, SavedCareerDraft):
+    for model in (Match, Extraction, SavedCareerDraft, SavedTailoringDraft):
         for row in s.exec(select(model).where(col(model.job_id) == job_id)):
             s.delete(row)
     s.flush()
@@ -440,3 +454,236 @@ def set_application(s: Session, job_id: int, body: ApplicationIn) -> Application
     s.commit()
     s.refresh(app)
     return app
+
+
+# --- resume tailoring: transactions and source ownership --------------------
+
+
+def _tailoring_role(job: Job, company: str) -> dict[str, Any]:
+    return {
+        "company": company,
+        "title": job.title,
+        "summary": job.summary,
+        "skills": job.skills,
+        "nice_to_have": job.nice_to_have,
+        "responsibilities": job.responsibilities,
+        "qualifications": job.qualifications,
+        "posting": job.raw_text or "",
+    }
+
+
+def _reserve_tailoring(
+    s: Session, job_id: int, revision_id: int, settings: Settings
+) -> tuple[str, int, str, list[str]]:
+    profile = get_profile(s)
+    _profile_lock(s, profile)
+    revision = revision_find(s, profile, revision_id)
+    row = repo.tailoring_job(s, job_id)
+    if row is None:
+        raise RevisionMissing("Job not found.")
+    job, company = row
+    candidate = tailoring._candidate(revision.snapshot)
+    role = _tailoring_role(job, company.name)
+    payload = {
+        "kind": "resume_tailoring",
+        "prompt_version": tailoring.PROMPT_VERSION,
+        "profile": candidate,
+        "job": role,
+    }
+    content = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if len(content) > settings.max_input_chars:
+        raise tailoring.TailoringInputError(
+            "The complete resume and job exceed the configured AI input limit. Choose a "
+            "shorter revision."
+        )
+    now = utcnow()
+    repo.purge_expired_tailoring_receipts(s, pk(profile), now)
+    if repo.tailoring_receipt_count(s, pk(profile)) >= tailoring.MAX_RECEIPTS:
+        raise tailoring.TailoringConflict(
+            "This profile has 100 recent generation receipts. Wait for their expiry "
+            "before generating again."
+        )
+    source = tailoring.TailoringSource(
+        revision_id=pk(revision),
+        revision_fingerprint=revision.fingerprint,
+        job_id=job_id,
+        job_fingerprint=tailoring._hash(role),
+        input_fingerprint=tailoring._hash(payload),
+    )
+    receipt = TailoringReceipt(
+        id=secrets.token_urlsafe(32),
+        profile_id=pk(profile),
+        job_id=job_id,
+        source_revision_id=revision_id,
+        expires_at=now + tailoring.RECEIPT_TTL,
+        provenance={
+            "source": source.model_dump(),
+            "provider": settings.ai_provider,
+            "model": settings.ai_model,
+            "prompt_version": tailoring.PROMPT_VERSION,
+        },
+    )
+    s.add(receipt)
+    captured = (receipt.id, pk(profile), content, tailoring._evidence(candidate))
+    # No transaction/owner lock or expired ORM attribute access before the provider await.
+    s.commit()
+    return captured
+
+
+def _cleanup_tailoring(s: Session, profile_id: int, receipt_id: str) -> None:
+    s.rollback()
+    profile = s.get(Profile, profile_id)
+    if profile is not None:
+        _profile_lock(s, profile)
+        repo.delete_tailoring_receipt(s, profile_id, receipt_id)
+        s.commit()
+
+
+def _complete_tailoring(
+    s: Session,
+    profile_id: int,
+    job_id: int,
+    receipt_id: str,
+    draft: tailoring.TailoringContent,
+    input_tokens: int,
+    output_tokens: int,
+) -> tailoring.TailoringResult:
+    s.rollback()
+    profile = s.get(Profile, profile_id)
+    if profile is None:
+        raise tailoring.TailoringConflict("The source profile was deleted during generation.")
+    _profile_lock(s, profile)
+    receipt = repo.tailoring_receipt(s, profile_id, job_id, receipt_id)
+    if receipt is None or receipt.expires_at <= utcnow():
+        raise tailoring.ReceiptGone("Generation receipt expired; generate again before saving.")
+    try:
+        revision_find(s, profile, receipt.source_revision_id)
+    except RevisionMissing as exc:
+        raise tailoring.TailoringConflict(
+            "The source revision was deleted during generation; no draft was saved."
+        ) from exc
+    if repo.tailoring_job(s, job_id) is None:
+        raise tailoring.TailoringConflict(
+            "The job was deleted during generation; no draft was saved."
+        )
+    generated_at = datetime.now(UTC)
+    provenance = {
+        **receipt.provenance,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "generated_at": generated_at.isoformat().replace("+00:00", "Z"),
+    }
+    receipt.provenance = provenance
+    receipt.original_hash = tailoring._hash(draft.model_dump(mode="json"))
+    s.add(receipt)
+    s.commit()
+    return tailoring.TailoringResult(
+        receipt_id=receipt_id,
+        draft=draft,
+        **{key: value for key, value in provenance.items() if key != "prompt_version"},
+    )
+
+
+async def generate_tailoring(
+    s: Session, job_id: int, revision_id: int
+) -> tailoring.TailoringResult:
+    settings = get_settings().model_copy(deep=True)
+    if not settings.llm_enabled:
+        raise AIUnavailable(f"Configure the selected {settings.ai_provider} key on the server.")
+    if not settings.ai_model.strip() or len(settings.ai_model) > 200:
+        raise tailoring.TailoringInputError(
+            "Configure a selected model name of 1 to 200 characters."
+        )
+    receipt_id, profile_id, content, evidence = _reserve_tailoring(s, job_id, revision_id, settings)
+    try:
+        draft, input_tokens, output_tokens = await tailoring.generate_content(
+            settings, content, evidence
+        )
+        return _complete_tailoring(
+            s, profile_id, job_id, receipt_id, draft, input_tokens, output_tokens
+        )
+    except BaseException:
+        # CancelledError inherits BaseException; cleanup never swallows cancellation.
+        try:
+            _cleanup_tailoring(s, profile_id, receipt_id)
+        except Exception:
+            s.rollback()  # Bounded orphan metadata expires in seven days if cleanup fails.
+        raise
+
+
+def save_tailoring(s: Session, job_id: int, body: tailoring.TailoringSave) -> SavedTailoringDraft:
+    profile = get_profile(s)
+    _profile_lock(s, profile)
+    receipt = repo.tailoring_receipt(s, pk(profile), job_id, body.receipt_id)
+    if receipt is None or receipt.expires_at <= utcnow() or receipt.original_hash is None:
+        raise tailoring.ReceiptGone(
+            "Generation receipt is unavailable or expired. Generate again before saving."
+        )
+    try:
+        revision = revision_find(s, profile, receipt.source_revision_id)
+    except RevisionMissing as exc:
+        raise tailoring.TailoringConflict(
+            "The source revision was deleted. Generate from an available revision."
+        ) from exc
+    if repo.tailoring_job(s, job_id) is None:
+        raise RevisionMissing("Job not found.")
+    tailoring.validate_quotes(
+        body.draft, tailoring._evidence(tailoring._candidate(revision.snapshot))
+    )
+    if repo.tailoring_draft_count(s, pk(profile), job_id) >= tailoring.MAX_DRAFTS:
+        raise tailoring.TailoringConflict(
+            "This job has 50 saved tailoring drafts. Delete one before saving another."
+        )
+    row = SavedTailoringDraft(
+        profile_id=pk(profile),
+        job_id=job_id,
+        source_revision_id=receipt.source_revision_id,
+        receipt_id=receipt.id,
+        provenance=receipt.provenance,
+        draft=body.draft.model_dump(mode="json"),
+        user_edited=tailoring._hash(body.draft.model_dump(mode="json")) != receipt.original_hash,
+    )
+    s.add(row)
+    s.commit()
+    s.refresh(row)
+    return row
+
+
+def find_tailoring(s: Session, job_id: int, draft_id: int) -> SavedTailoringDraft:
+    row = repo.tailoring_draft(s, pk(get_profile(s)), job_id, draft_id)
+    if row is None:
+        raise RevisionMissing("Saved tailoring draft not found.")
+    return row
+
+
+def delete_tailoring(s: Session, job_id: int, draft_id: int) -> None:
+    profile = get_profile(s)
+    _profile_lock(s, profile)
+    row = find_tailoring(s, job_id, draft_id)
+    s.delete(row)
+    s.commit()
+
+
+def accept_tailoring(
+    s: Session, job_id: int, draft_id: int, expected_revision: int
+) -> dict[str, Any]:
+    profile = get_profile(s)
+    _profile_lock(s, profile)
+    row = find_tailoring(s, job_id, draft_id)
+    content = tailoring.TailoringContent.model_validate(row.draft)
+    # Deliberately preserve CURRENT identity, headline, experience and preferences.
+    data = profile.model_dump(exclude={"id", "updated_at"})
+    data.update(
+        resume_text=content.resume_text,
+        skills=find_skills(content.resume_text),
+        expected_revision=expected_revision,
+    )
+    try:
+        accepted = ProfileIn.model_validate(data)
+    except ValidationError as exc:
+        raise tailoring.TailoringInputError(
+            "The current legacy profile exceeds current bounds. Save a bounded revision "
+            "before accepting."
+        ) from exc
+    save_profile(s, accepted)
+    return profile_output(s, profile)

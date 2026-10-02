@@ -110,6 +110,8 @@ def test_backup_restore_preserves_complete_pipeline_and_wal(
             "profile",
             "profilerevision",
             "profilerevisionhead",
+            "tailoringreceipt",
+            "savedtailoringdraft",
             "company",
             "job",
             "application",
@@ -237,7 +239,9 @@ def test_publication_race_does_not_replace_concurrent_output(
     assert list(tmp_path.glob(".jobbr-snapshot-*")) == []
 
 
-@pytest.mark.parametrize("revision", ["0001_v2", "0002_saved_drafts", "0003_auth_store"])
+@pytest.mark.parametrize(
+    "revision", ["0001_v2", "0002_saved_drafts", "0003_auth_store", "0004_profile_revisions"]
+)
 def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, revision):
     configuration = Config()
     configuration.set_main_option(
@@ -270,6 +274,6 @@ def test_historical_snapshot_restores_unchanged_then_upgrades(env, tmp_path, rev
     with sqlite3.connect(restored) as copy, sqlite3.connect(snapshot) as archive:
         assert copy.execute("SELECT name FROM company").fetchone() == ("Historical company",)
         assert copy.execute("SELECT version_num FROM alembic_version").fetchone() == (
-            "0004_profile_revisions",
+            "0005_tailoring",
         )
         assert archive.execute("SELECT version_num FROM alembic_version").fetchone() == (revision,)

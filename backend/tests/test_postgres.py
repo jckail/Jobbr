@@ -20,6 +20,10 @@ from jobbr.schema import SchemaMismatchError, verify_schema
 from migrations.baseline import metadata as initial_schema
 from tests.conftest import API, ARTICLE, reset_settings
 from tests.test_profile_revisions import concurrent_revision_saves
+from tests.test_tailoring import (
+    concurrent_tailoring_saves,
+    source_capture_saved_during_active_change,
+)
 
 
 @pytest.fixture
@@ -75,7 +79,7 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
     db.init_db()
     with db.get_engine().connect() as connection:
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == (
-            "0004_profile_revisions"
+            "0005_tailoring"
         )
         verify_schema(connection, SQLModel.metadata)
         assert set(inspect(connection).get_table_names()) == {
@@ -92,6 +96,8 @@ def test_postgres_migrations_and_pipeline_survive_reopening(postgres: None) -> N
             "authstoreguard",
             "profilerevision",
             "profilerevisionhead",
+            "tailoringreceipt",
+            "savedtailoringdraft",
             "alembic_version",
         }
 
@@ -226,7 +232,7 @@ def test_concurrent_postgres_startup_serializes_migrations(postgres, monkeypatch
     with engine.connect() as connection:
         assert (
             connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-            == "0004_profile_revisions"
+            == "0005_tailoring"
         )
         assert (
             connection.execute(text("SELECT name FROM company")).scalar_one()
@@ -245,3 +251,11 @@ def test_first_owner_creation_is_serialized_in_postgres(postgres):
 def test_postgres_revision_save_serializes_expected_check(postgres: None) -> None:
     db.init_db()
     concurrent_revision_saves()
+
+
+def test_postgres_tailoring_provenance_acceptance_and_concurrent_capacity(postgres, monkeypatch):
+    db.init_db()
+    profile_id, job_id, revision_id, receipt_id, content = (
+        source_capture_saved_during_active_change(monkeypatch)
+    )
+    concurrent_tailoring_saves(profile_id, job_id, revision_id, receipt_id, content)

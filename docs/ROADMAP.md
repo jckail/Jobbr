@@ -16,7 +16,7 @@ Target: a private job-search workspace at https://jckail.com/jobbr, with an exce
 
 1. Finish browser acceptance of the implemented Superdesign across overview, searchable jobs, role detail, pipeline, profile and onboarding: desktop/mobile, keyboard, loading, empty, unauthorized and failure states.
 2. Cookie authentication and consent-based career UI are implemented. Verify real provider login and paid generation, explicit private saved-draft persistence has passed hosted backend tests; complete browser acceptance; unknown spend is no longer shown as free.
-3. Bounded PDF resume preview/import is implemented and tested, including malformed/scanned files and privacy. Add versioned resume/profile handling and useful resume tailoring.
+3. Bounded PDF resume preview/import is implemented and tested, including malformed/scanned files and privacy. Immutable profile history and reviewed tailoring are now implemented with private server-captured provenance; complete real browser/provider acceptance and the next tested local upgrade.
 4. Greenhouse/Lever discovery with checked source provenance and explicit saving is implemented; reminders are wired. Improve freshness/deduplication and richer search. Headless fetching needs a verified SSRF-safe browser strategy; extension capture already handles rendered text without backend browser access.
 5. Add persistent user ownership and authenticated per-query authorization if expanding beyond the single-owner instance; shared encrypted transaction/session storage is implemented; PostgreSQL shared-session and startup-concurrency regressions passed hosted CI; verify production stable-key configuration before multiple workers/replicas. Current configured owner restriction must remain until this is verified.
 6. Verify real ChatGPT client registration/callback and live SDK behavior using authorized server credentials; no ChatGPT-plan billing inferred from identity sign-in.
@@ -34,7 +34,7 @@ Nothing here proves the full goal complete. Unit tests do not prove provider app
 Agent Hub currently has no configured Jobbr memory scope: `context` returned the repository-selection guidance and `checkpoint --cwd /home/jkail/jobbr-v2` rejected saving. This is a routing gap, not missing source. Verified project handoff remains in these local docs, with no remote memory upload. A shared Graphify refresh was requested but is waiting behind existing refresh processes; Jobbr code coverage was unavailable and source was verified directly.
 
 
-## Current release evidence
+## Earlier release evidence
 
 Head b3a28a4 passed hosted CI run36966970247 for backend, web, extension, secrets and image smoke/security checks. PR1 remains draft; main publication and production release are unverified. CloudSQL jobbr-pg and dedicated runtime account, secrets and image repository exist; database bootstrap and Cloud Run service deployment await confirmation. No DNS/routing changes have occurred. The prepared manual workflow is under review, not executed. The latest handoff selected both OpenAI and Claude; implementation and offline review are authorized, while explicit confirmation remains required for credentials, paid calls and routing changes.
 
@@ -54,3 +54,9 @@ Implemented exact-URL unchanged pasted-posting detection before extraction: matc
 Canonical ATS identities, database uniqueness/concurrent writes and upstream availability tracking remain follow-ups; a checked timestamp does not prove a posting remains available. Versioned resumes/profile tailoring, supported extension authentication/real Chrome acceptance and the explicitly gated provider/production work remain open.
 
 Immutable profile-history foundation now includes private snapshots, explicit restore/re-scoring, monotonic stale-edit protection, non-recycled revision IDs, and historical/current backup compatibility. Mandatory local backend/web/extension verification passed; exact-SHA hosted CI follows publication. Tailoring and generation provenance tied to an explicitly selected revision remain open; see PROFILE_VERSIONS_PLAN.md.
+
+## Latest verified implementation (October 2)
+
+Immutable profile history atdb40e3f is pushed with green hosted CI and is running in the owned local Compose app with every prior product record preserved. The next reviewed increment implements revision-based resume tailoring, metadata-only generation receipts, separate save/activation, expected-version conflicts, frozen0004/additive0005 backup support, extension paid-provider consent/settings pins, and expired-session UI cleanup. Mandatory combined verification passed392backend cases including live PostgreSQL plus seven release and seven extension tests and all lint/types/build checks. Publication/exact-head hosted CI follows; paid provider and production acceptance remain unverified.
+
+Shared Chrome extension tools are enabled, but install path authorization is being repaired by a separate maintenance agent. A source UI generation check was interrupted by its browser reconnect, so full tailoring browser and installed extension acceptance remain open. Resume root's synthetic fixture and real extension checks after the verified maintenance handoff. Existing saved cover-letter/interview drafts still have historical save-time fingerprints, not generation-revision provenance. Discovery canonical identity/concurrent duplicate prevention/freshness, supported direct OIDC extension authorization, live identity/provider setup, production bootstrap/routing, and owner-approved legacy cleanup/credential rotation remain tracked.

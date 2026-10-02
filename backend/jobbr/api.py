@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from . import __version__, drafts, repo, serializers, services, stats
+from . import __version__, drafts, repo, serializers, services, stats, tailoring
 from .auth import AuthService, require_csrf, require_session
 from .career import (
     AIUnavailable,
@@ -309,6 +309,87 @@ def get_career_draft(job_id: int, draft_id: int, s: SessionDep) -> Json:
 def delete_career_draft(job_id: int, draft_id: int, s: SessionDep) -> None:
     s.delete(_saved_draft(s, job_id, draft_id))
     s.commit()
+
+
+def _tailoring_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, (tailoring.TailoringConflict, services.RevisionConflict)):
+        status = 409
+    elif isinstance(exc, services.RevisionMissing):
+        status = 404
+    elif isinstance(exc, tailoring.ReceiptGone):
+        status = 410
+    elif isinstance(exc, AIUnavailable):
+        status = 503
+    elif isinstance(exc, CareerGenerationError):
+        status = 502
+    else:
+        status = 422
+    return HTTPException(status, str(exc))
+
+
+TailoringErrors = (
+    tailoring.TailoringInputError,
+    tailoring.TailoringConflict,
+    tailoring.ReceiptGone,
+    services.UserError,
+    AIUnavailable,
+    CareerGenerationError,
+)
+
+
+@router.post("/jobs/{job_id}/tailoring", dependencies=[*draft_write, Depends(require_ai_selection)])
+async def generate_resume_tailoring(
+    job_id: int, body: tailoring.TailoringRequest, s: SessionDep
+) -> tailoring.TailoringResult:
+    try:
+        return await services.generate_tailoring(s, job_id, body.source_revision_id)
+    except TailoringErrors as exc:
+        raise _tailoring_error(exc) from exc
+
+
+@router.get("/jobs/{job_id}/tailoring/drafts", dependencies=draft_read)
+def list_tailoring_drafts(job_id: int, s: SessionDep) -> list[Json]:
+    _row(s, job_id)
+    return [
+        serializers.tailoring_draft_out(row)
+        for row in repo.tailoring_drafts(s, pk(_profile(s)), job_id, tailoring.MAX_DRAFTS)
+    ]
+
+
+@router.post("/jobs/{job_id}/tailoring/drafts", status_code=201, dependencies=draft_write)
+def save_tailoring_draft(job_id: int, body: tailoring.TailoringSave, s: SessionDep) -> Json:
+    try:
+        return serializers.tailoring_draft_out(services.save_tailoring(s, job_id, body))
+    except TailoringErrors as exc:
+        raise _tailoring_error(exc) from exc
+
+
+@router.get("/jobs/{job_id}/tailoring/drafts/{draft_id}", dependencies=draft_read)
+def get_tailoring_draft(job_id: int, draft_id: int, s: SessionDep) -> Json:
+    try:
+        return serializers.tailoring_draft_out(services.find_tailoring(s, job_id, draft_id))
+    except services.RevisionMissing as exc:
+        raise _tailoring_error(exc) from exc
+
+
+@router.delete(
+    "/jobs/{job_id}/tailoring/drafts/{draft_id}", status_code=204, dependencies=draft_write
+)
+def delete_tailoring_draft(job_id: int, draft_id: int, s: SessionDep) -> None:
+    try:
+        services.delete_tailoring(s, job_id, draft_id)
+    except services.RevisionMissing as exc:
+        raise _tailoring_error(exc) from exc
+
+
+@router.post("/jobs/{job_id}/tailoring/drafts/{draft_id}/accept", dependencies=draft_write)
+def accept_tailoring_draft(
+    job_id: int, draft_id: int, body: tailoring.TailoringAccept, s: SessionDep
+) -> Json:
+    try:
+        return services.accept_tailoring(s, job_id, draft_id, body.expected_revision)
+    except TailoringErrors as exc:
+        raise _tailoring_error(exc) from exc
 
 
 @router.post("/jobs/{job_id}/career/{kind}", dependencies=ai_write)

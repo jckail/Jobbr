@@ -10,7 +10,7 @@ from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 from pydantic import BaseModel
 
 from .anthropic_provider import run_anthropic
-from .config import get_settings
+from .config import Settings, get_settings
 from .models import Job, Profile
 
 CareerKind = Literal["cover_letter", "interview_prep"]
@@ -57,10 +57,15 @@ class CareerResult(BaseModel):
 
 
 async def run_structured(
-    name: str, instructions: str, content: str, output_type: type[OutputT]
+    name: str,
+    instructions: str,
+    content: str,
+    output_type: type[OutputT],
+    *,
+    settings: Settings | None = None,
 ) -> tuple[OutputT, int, int]:
     """One tool-free agent, bounded wall time, turns and output; traces disabled."""
-    settings = get_settings()
+    settings = settings if settings is not None else get_settings()
     if not settings.llm_enabled:
         raise AIUnavailable(f"Configure the selected {settings.ai_provider} API key on the server.")
     if len(content) > settings.max_input_chars:

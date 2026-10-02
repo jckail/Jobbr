@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "../api";
 import CareerPanel from "../components/CareerPanel";
+import TailoringPanel from "../components/TailoringPanel";
 import { STAGES, type Config, type Stage } from "../types";
 import { Chips, CompanyLogo, Empty, Icon, ICONS, Score, StagePill, useAsync, useGuarded } from "../ui";
 import { ago, cap, comp } from "../util";
@@ -60,6 +61,7 @@ export default function JobDetail({ id, rev, onChange, llmEnabled, config }: { i
           </section>
 
           <CareerPanel job={j} enabled={llmEnabled} />
+          <TailoringPanel key={j.id} jobId={j.id} config={config} onChange={onChange} />
           {j.summary && <section className="card"><header><h2>About the role</h2></header><p style={{ margin: 0 }}>{j.summary}</p></section>}
           <section className="card"><header><h2>Skills</h2></header>
             <h3 style={{ marginBottom: 8 }}>Required</h3><Chips items={j.skills} max={40} kind="accent" />

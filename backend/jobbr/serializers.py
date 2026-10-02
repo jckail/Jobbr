@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from .models import Profile, ProfileRevision, ProfileRevisionHead, Stage, pk
+from .models import Profile, ProfileRevision, ProfileRevisionHead, SavedTailoringDraft, Stage, pk
 from .repo import JobRow
 
 Json = dict[str, Any]
@@ -38,3 +38,16 @@ def profile_revision_out(row: ProfileRevision, active_id: int, detail: bool = Fa
     if detail:
         result["snapshot"] = row.snapshot
     return result
+
+
+def tailoring_draft_out(row: SavedTailoringDraft) -> Json:
+    return {
+        "id": pk(row),
+        "created_at": row.created_at.isoformat(),
+        "receipt_id": row.receipt_id,
+        "kind": "resume_tailoring",
+        "requires_review": True,
+        "user_edited": row.user_edited,
+        "draft": row.draft,
+        **{key: value for key, value in row.provenance.items() if key != "prompt_version"},
+    }
