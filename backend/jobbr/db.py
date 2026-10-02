@@ -1,12 +1,16 @@
 from collections.abc import Iterator
 from functools import lru_cache
+from importlib.resources import files
 from typing import Any
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import Engine, event
 from sqlmodel import Session, SQLModel, create_engine
 
 from . import models  # noqa: F401  (registers tables on SQLModel.metadata)
 from .config import get_settings
+from .schema import verify_schema
 
 
 @lru_cache
@@ -34,7 +38,12 @@ def reset_engine() -> None:
 
 
 def init_db() -> None:
-    SQLModel.metadata.create_all(get_engine())
+    configuration = Config()
+    configuration.set_main_option("script_location", str(files("migrations")))
+    with get_engine().begin() as connection:
+        configuration.attributes["connection"] = connection
+        command.upgrade(configuration, "head")
+        verify_schema(connection, SQLModel.metadata)
 
 
 def get_session() -> Iterator[Session]:

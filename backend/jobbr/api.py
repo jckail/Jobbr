@@ -1,10 +1,19 @@
-from typing import Annotated
+import secrets
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from . import __version__, repo, serializers, services, stats
+from .auth import AuthService, require_csrf, require_session
+from .career import (
+    AIUnavailable,
+    CareerGenerationError,
+    CareerInputError,
+    CareerResult,
+    generate_career,
+)
 from .config import get_settings
 from .db import get_session
 from .models import Extraction, Profile, Stage, pk
@@ -16,13 +25,32 @@ router = APIRouter(prefix="/api")
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-def require_token(x_jobbr_token: Annotated[str | None, Header()] = None) -> None:
+def require_token(request: Request, x_jobbr_token: Annotated[str | None, Header()] = None) -> None:
+    auth: AuthService = request.app.state.auth
+    if auth.settings.auth_enabled:
+        require_csrf(request)
+        return
     token = get_settings().api_token
-    if token and x_jobbr_token != token:
+    if token and not secrets.compare_digest((x_jobbr_token or "").encode(), token.encode()):
         raise HTTPException(401, "This Jobbr instance is read-only without a valid token.")
 
 
 write = [Depends(require_token)]
+
+
+def require_access(request: Request, x_jobbr_token: Annotated[str | None, Header()] = None) -> None:
+    auth: AuthService = request.app.state.auth
+    if auth.settings.auth_enabled:
+        require_session(request)
+    elif get_settings().private_instance:
+        token = get_settings().api_token
+        if not token or not secrets.compare_digest((x_jobbr_token or "").encode(), token.encode()):
+            raise HTTPException(
+                401, "A valid access token is required to view this private instance."
+            )
+
+
+read = [Depends(require_access)]
 
 
 def _profile(s: Session) -> Profile:
@@ -50,20 +78,22 @@ def health() -> Json:
 
 
 @router.get("/config")
-def config() -> Json:
+def config(request: Request) -> Json:
     st = get_settings()
     return {
         "version": __version__,
         "llm_enabled": st.llm_enabled,
         "model": st.model if st.llm_enabled else None,
         "write_protected": bool(st.api_token),
+        "private_instance": st.private_instance,
+        "auth_enabled": request.app.state.auth.settings.auth_enabled,
     }
 
 
 # --- jobs -------------------------------------------------------------------
 
 
-@router.get("/jobs")
+@router.get("/jobs", dependencies=read)
 def list_jobs(
     s: SessionDep,
     q: str | None = None,
@@ -85,7 +115,7 @@ def add_job(body: JobCreate, s: SessionDep) -> Json:
     return _detail(s, pk(job))
 
 
-@router.get("/jobs/{job_id}")
+@router.get("/jobs/{job_id}", dependencies=read)
 def get_job(job_id: int, s: SessionDep) -> Json:
     row = _row(s, job_id)
     out = serializers.job_out(row, detail=True)
@@ -126,7 +156,7 @@ def put_application(job_id: int, body: ApplicationIn, s: SessionDep) -> Json:
 # --- profile & stats --------------------------------------------------------
 
 
-@router.get("/profile")
+@router.get("/profile", dependencies=read)
 def get_profile(s: SessionDep) -> Profile:
     return _profile(s)
 
@@ -136,8 +166,23 @@ def put_profile(body: ProfileIn, s: SessionDep) -> Profile:
     return services.save_profile(s, body)
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=read)
 def get_stats(s: SessionDep) -> Json:
     profile = _profile(s)
     cost = s.exec(select(func.coalesce(func.sum(Extraction.cost_usd), 0.0))).one()
     return stats.compute(repo.job_rows(s, pk(profile)), profile, float(cost))
+
+
+@router.post("/jobs/{job_id}/career/{kind}", dependencies=write)
+async def career_assistance(
+    job_id: int, kind: Literal["cover_letter", "interview_prep"], s: SessionDep
+) -> CareerResult:
+    row = _row(s, job_id)
+    try:
+        return await generate_career(row.job, row.company.name, _profile(s), kind)
+    except AIUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except CareerInputError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except CareerGenerationError as exc:
+        raise HTTPException(502, str(exc)) from exc

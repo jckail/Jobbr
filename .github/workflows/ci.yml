@@ -1,39 +1,90 @@
 name: ci
-on: { push: { branches: [main] }, pull_request: {} }
+on:
+  push:
+    branches: [main, claude/beautiful-sagan-mtnuvk]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: jobbr_test_only
+          POSTGRES_DB: jobbr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d jobbr_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      JOBBR_TEST_POSTGRES_URL: postgresql+psycopg://postgres:jobbr_test_only@127.0.0.1:5432/jobbr_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -e "backend[dev]"
-      - run: ruff check .
-        working-directory: backend
-      - run: ruff format --check .
-        working-directory: backend
-      - run: mypy jobbr
-        working-directory: backend
-      - run: pytest
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --project backend --locked --extra dev
+      - run: |
+          uv export --project backend --locked --no-dev --no-emit-project --no-header --format requirements-txt --output-file /tmp/jobbr-requirements.lock
+          diff backend/requirements.lock /tmp/jobbr-requirements.lock
+      - run: uvx pip-audit==2.10.1 -r backend/requirements.lock --no-deps --disable-pip
+      - run: .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy jobbr && .venv/bin/pytest
         working-directory: backend
   web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
-      - run: npm ci
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npm run check && npm audit --audit-level=high
         working-directory: web
-      - run: npm run check   # eslint + tsc + vite build
-        working-directory: web
-  image:
-    needs: [backend, web]
-    if: github.ref == 'refs/heads/main'
+  extension:
     runs-on: ubuntu-latest
-    permissions: { packages: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test extension/*.test.mjs
+  image-test:
+    needs: [backend, web, extension]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t jobbr:test .
+      - run: >-
+          docker run -d --name jobbr-test -p 127.0.0.1:8000:8000
+          --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges
+          --mount type=volume,dst=/data jobbr:test
+      - run: python scripts/smoke.py
+      - if: always()
+        run: docker logs jobbr-test; docker rm -f jobbr-test
+  image-publish:
+    needs: [image-test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: docker/login-action@v3
-        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
-        with: { context: ., push: true, tags: "ghcr.io/${{ github.repository_owner }}/jobbr:latest" }
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/jobbr:${{ github.sha }}

@@ -107,7 +107,7 @@ def test_token_protects_writes(client, env):
 
 
 def test_llm_used_when_key_set_and_falls_back_on_error(client, env):
-    env.setenv("JOBBR_ANTHROPIC_API_KEY", "test-key")
+    env.setenv("JOBBR_OPENAI_API_KEY", "test-key")
     reset_settings()
     fake = JobExtraction(company="LLMCo", title="Wizard", skills=["python"])
     env.setattr(extract_mod, "llm_extract", lambda text, hint=None: (fake, 1000, 200))
@@ -115,7 +115,9 @@ def test_llm_used_when_key_set_and_falls_back_on_error(client, env):
     assert job["company"]["name"] == "LLMCo"
     run = client.get(f"{API}/jobs/{job['id']}").json()["extractions"][0]
     assert run["method"] == "llm"
-    assert run["cost_usd"] > 0
+    assert run["input_tokens"] == 1000
+    assert run["output_tokens"] == 200
+    assert run["model"] == "gpt-4.1-mini"
 
     def boom(text, hint=None):
         raise RuntimeError("api down")
@@ -124,7 +126,7 @@ def test_llm_used_when_key_set_and_falls_back_on_error(client, env):
     job2 = add(client, text=POSTING + "\nmore", company="Fallback")
     run2 = client.get(f"{API}/jobs/{job2['id']}").json()["extractions"][0]
     assert run2["method"] == "heuristic"
-    assert "fallback" in run2["error"]
+    assert "offline heuristics" in run2["error"]
 
 
 def test_spa_serving_and_path_traversal(client, env, tmp_path):

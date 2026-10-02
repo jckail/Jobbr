@@ -7,9 +7,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
+from starlette.middleware.base import RequestResponseEndpoint
+from starlette.responses import Response
 
 from . import __version__
 from .api import router
+from .auth import AuthService, AuthSettings, build_auth_router
 from .config import get_settings
 from .db import get_engine, init_db
 from .models import Job
@@ -58,6 +61,29 @@ def create_app() -> FastAPI:
         openapi_url=f"{base}/api/openapi.json",
         redoc_url=None,
     )
+    auth = AuthService(AuthSettings(), base=base)
+    app.state.auth = auth
+    if st.private_instance and not (st.api_token or auth.settings.auth_enabled):
+        raise RuntimeError("Private instances require an API token or configured OpenAI sign-in.")
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.path.startswith(base + "/api"):
+            response.headers["Cache-Control"] = "no-store"
+        else:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self'; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "font-src 'self' https://fonts.gstatic.com; "
+                "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+                "base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+            )
+        return response
 
     @app.get("/healthz", include_in_schema=False)
     def healthz() -> dict[str, bool]:
@@ -65,6 +91,7 @@ def create_app() -> FastAPI:
 
     # API lives under the mount path so an ingress can route /jobbr/* without rewriting.
     app.include_router(router, prefix=base)
+    app.include_router(build_auth_router(auth), prefix=base)
 
     _mount_spa(app, Path(st.static_dir), base)
 

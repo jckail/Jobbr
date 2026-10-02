@@ -16,7 +16,7 @@ Job hunting is a data problem: postings are messy HTML, a candidate is a messy r
 
 ## v2 decisions
 - **Domain model**: Company, Job, Extraction, Profile, Match, Application, ApplicationEvent (see readme).
-- **Extraction ladder**: schema.org JSON-LD (free, exact) → Claude tool-use with a pydantic schema (forced structured output) → heuristics. Always works offline.
+- **Extraction ladder**: schema.org JSON-LD (free, exact) → OpenAI Agents SDK with typed structured output → heuristics. Always works offline.
 - **Matching** is deterministic, weighted, and explainable; changing your profile re-scores everything instantly.
 - **Security**: SSRF guard re-validated on every redirect hop, optional write token for public hosting, non-root read-only container.
 - **Frontend**: React + TypeScript, no UI framework, accessible, dark mode, mobile layout, drag-and-drop pipeline, keyboard shortcut (`N`).
@@ -24,6 +24,10 @@ Job hunting is a data problem: postings are messy HTML, a candidate is a messy r
 
 ## Not done yet (suggested next)
 - Delete legacy code (kept in place pending your OK) and rotate any previously committed keys.
-- Alembic migrations (tables are created with `create_all` for now).
+- Alembic initial migrations and validated adoption are now implemented; live PostgreSQL verification is in progress.
 - Headless-browser fetch for JS-only career pages (today: paste text fallback).
 - Resume file upload (PDF) and an LLM-written cover letter / interview prep.
+
+## Current overhaul status
+
+See ROADMAP.md for the full requested scope and current evidence. Sign in with ChatGPT, SDK career assistance and extension capture backend boundaries are implemented; new design implementation, provider registration/live tests and production acceptance remain outstanding.

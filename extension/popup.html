@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Save to Jobbr</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><h1>Jobbr<span>Save a posting</span></h1><a id="open-app" href="http://localhost:8000/jobbr/" target="_blank" rel="noopener noreferrer">Open Jobbr</a></header>
+  <main>
+    <label for="destination">Save to</label>
+    <select id="destination"><option value="local">Local · localhost:8000</option><option value="production">Production · jckail.com</option></select>
+    <p class="hint">Capture reads this tab’s URL and visible text into a preview. Nothing is sent until you choose Save to Jobbr.</p>
+    <button id="capture" type="button">Capture current tab</button>
+    <form id="preview" hidden>
+      <label for="url">Posting URL</label><input id="url" type="url" required autocomplete="off">
+      <label for="text">Posting text <span id="count"></span></label><textarea id="text" rows="8" maxlength="60000" spellcheck="false"></textarea>
+      <p class="hint">Review and remove personal information. Clear the text to send only the URL; Jobbr will fetch that page.</p>
+      <button id="save" type="submit">Save to Jobbr</button>
+    </form>
+    <details><summary>API token</summary><p class="hint">Only needed when this instance requires a token. Kept for this browser session, separately for each destination. Instances using browser sign-in currently require saving inside the Jobbr app.</p><label for="token">Token</label><input id="token" type="password" autocomplete="off" maxlength="1024"><button id="forget" type="button" class="secondary">Forget token</button></details>
+    <p id="status" role="status" aria-live="polite"></p>
+  </main>
+  <script type="module" src="popup.mjs"></script>
+</body>
+</html>

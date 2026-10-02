@@ -4,15 +4,7 @@ apiVersion: v1
 kind: Namespace
 metadata: { name: jobbr }
 ---
-apiVersion: v1
-kind: Secret
-metadata: { name: jobbr, namespace: jobbr }
-type: Opaque
-stringData:
-  # Optional. Without an API key Jobbr uses JSON-LD + heuristics. Without a token, writes are open.
-  JOBBR_ANTHROPIC_API_KEY: ""
-  JOBBR_API_TOKEN: "change-me"
----
+# Create the jobbr Secret externally; never commit live credentials or placeholder tokens.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata: { name: jobbr-data, namespace: jobbr }
@@ -30,14 +22,16 @@ spec:
   template:
     metadata: { labels: { app: jobbr } }
     spec:
-      securityContext: { fsGroup: 10001 }
+      automountServiceAccountToken: false
+      securityContext: { fsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: jobbr
-          image: ghcr.io/jckail/jobbr:latest
+          image: ghcr.io/jckail/jobbr:SET_VERIFIED_COMMIT_SHA
           ports: [{ containerPort: 8000 }]
           envFrom: [{ secretRef: { name: jobbr } }]
           env:
-            - { name: JOBBR_SEED_DEMO, value: "1" }   # demo data on an empty DB; remove for real use
+            - { name: JOBBR_SEED_DEMO, value: "false" }
+            - { name: JOBBR_PRIVATE_INSTANCE, value: "true" }
           readinessProbe: { httpGet: { path: /healthz, port: 8000 } }
           livenessProbe: { httpGet: { path: /healthz, port: 8000 }, initialDelaySeconds: 10 }
           resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 512Mi } }

@@ -31,7 +31,12 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> pytest.MonkeyPatch:
     """Isolated settings: fresh SQLite file, no API key, private fetch allowed."""
     monkeypatch.setenv("JOBBR_DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
     monkeypatch.setenv("JOBBR_ALLOW_PRIVATE_FETCH", "1")
-    for var in ("JOBBR_ANTHROPIC_API_KEY", "JOBBR_API_TOKEN"):
+    for var in (
+        "JOBBR_OPENAI_API_KEY",
+        "OPENAI_API_KEY",
+        "JOBBR_ANTHROPIC_API_KEY",
+        "JOBBR_API_TOKEN",
+    ):
         monkeypatch.delenv(var, raising=False)
     reset_settings()
     yield monkeypatch
