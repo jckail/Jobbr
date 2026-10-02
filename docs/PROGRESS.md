@@ -294,3 +294,23 @@ run. Web checks and the mandatory combined gate remain pending. A live shared
 lock holder exited, but a fresh availability probe still found the shared slot
 occupied; no unchanged full gate was queued. Ownership/blocker status was sent
 to the designated existing supervisor; AgentMon remains absent from the catalog.
+
+
+## Offline provider-aware release guards
+
+Reviewed the existing release-helper proposal against current source: the
+workflow lacked AI provider/model/key pins. Root added explicit off/OpenAI/Claude
+release policies, exact matching numeric selected-key refs, enabled-version
+metadata verification and final revision binding checks. Shared helper
+`scripts/cloud_run_ai_policy.py` centralizes validation. Existing services must
+already match the reviewed AI configuration; this workflow does not convert
+providers, clear credentials or alter the existing token-mode boundary.
+
+Twelve offline mocked release methods pass, retaining the original seven
+image/auth/provenance/readiness/secret guards. Focused Ruff/format and diff checks
+pass. No credentials, cloud calls or provider spending occurred. Independent
+review found and corrected an accidental helper import in the pre-checkout
+image-input job; a new isolated-input regression passes. The mandatory full
+gate remains pending; no new source push or
+workflow dispatch is claimed. Other-owner manifest/bootstrap helpers remain
+untouched.

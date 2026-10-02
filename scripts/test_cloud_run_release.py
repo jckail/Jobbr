@@ -7,6 +7,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import textwrap
 import unittest
 from pathlib import Path
@@ -15,6 +16,8 @@ from unittest.mock import patch
 WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/deploy-cloud-run.yml"
 )
+sys.path.insert(0, str(WORKFLOW.parents[2]))
+
 ACCOUNT = "jobbr-runtime@portfolio-383615.iam.gserviceaccount.com"
 CONNECTION = "portfolio-383615:us-central1:jobbr-pg"
 IMAGE = "us-central1-docker.pkg.dev/portfolio-383615/jobbr/jobbr@sha256:" + "a" * 64
@@ -29,6 +32,9 @@ ENV = {
     "GITHUB_RUN_ID": "123",
     "GITHUB_RUN_ATTEMPT": "1",
     "DEPLOY_IMAGE": IMAGE,
+    "JOBBR_RELEASE_AI_PROVIDER": "off",
+    "JOBBR_RELEASE_AI_MODEL": "",
+    "JOBBR_AI_SECRET_REF": "",
 }
 
 
@@ -58,6 +64,7 @@ def container():
                 "valueFrom": {"secretKeyRef": {"name": name, "key": version}},
             }
         )
+    entries.append({"name": "JOBBR_AI_PROVIDER", "value": "openai"})
     return {
         "image": IMAGE,
         "env": entries,
@@ -245,6 +252,223 @@ class ReleaseTests(unittest.TestCase):
                 {"GITHUB_RUN_ID": "1;echo injected"},
             )
         self.assertEqual(self.calls, [])
+
+    def ai_fixture(self, provider):
+        model = "gpt-4.1-mini" if provider == "openai" else "claude-sonnet-4-6"
+        model_name = "JOBBR_MODEL" if provider == "openai" else "JOBBR_ANTHROPIC_MODEL"
+        key_name = (
+            "JOBBR_OPENAI_API_KEY"
+            if provider == "openai"
+            else "JOBBR_ANTHROPIC_API_KEY"
+        )
+        reference = "jobbr-" + provider + "-api-key:4"
+        for target in (
+            self.service["spec"]["template"]["spec"]["containers"][0],
+            self.revision["spec"]["containers"][0],
+        ):
+            target["env"] = [
+                entry
+                for entry in container()["env"]
+                if entry["name"] != "JOBBR_AI_PROVIDER"
+            ]
+            target["env"].extend(
+                [
+                    {"name": "JOBBR_AI_PROVIDER", "value": provider},
+                    {"name": model_name, "value": model},
+                    {
+                        "name": key_name,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": "jobbr-" + provider + "-api-key",
+                                "key": "4",
+                            }
+                        },
+                    },
+                ]
+            )
+        return {
+            "JOBBR_RELEASE_AI_PROVIDER": provider,
+            "JOBBR_RELEASE_AI_MODEL": model,
+            "JOBBR_AI_SECRET_REF": reference,
+        }
+
+    def test_both_provider_pins_are_checked_and_written(self):
+        for provider in ("openai", "anthropic"):
+            with self.subTest(provider=provider):
+                extra = self.ai_fixture(provider)
+                self.calls.clear()
+                self.execute(
+                    "Verify existing dedicated resources and enabled pinned secret versions",
+                    extra,
+                )
+                self.assertIn("--secret=jobbr-" + provider + "-api-key", self.calls[-1])
+                self.assertEqual(self.calls[-1][4], "4")
+                self.calls.clear()
+                self.execute(
+                    "Update only the existing Jobbr service with pinned image and secret references",
+                    extra,
+                )
+                update = self.calls[0]
+                env_arg = next(
+                    arg for arg in update if arg.startswith("--update-env-vars=")
+                )
+                secret_arg = next(
+                    arg for arg in update if arg.startswith("--update-secrets=")
+                )
+                self.assertIn("JOBBR_AI_PROVIDER=" + provider, env_arg)
+                model_name = (
+                    "JOBBR_MODEL" if provider == "openai" else "JOBBR_ANTHROPIC_MODEL"
+                )
+                key_name = (
+                    "JOBBR_OPENAI_API_KEY"
+                    if provider == "openai"
+                    else "JOBBR_ANTHROPIC_API_KEY"
+                )
+                self.assertIn(
+                    model_name + "=" + extra["JOBBR_RELEASE_AI_MODEL"], env_arg
+                )
+                self.assertIn(key_name + "=" + extra["JOBBR_AI_SECRET_REF"], secret_arg)
+                self.assertEqual(
+                    self.calls[-1][1:4], ["run", "services", "update-traffic"]
+                )
+
+    def test_invalid_reviewed_ai_policy_precedes_google_calls(self):
+        base = {
+            "GCP_WIF_PROVIDER": "projects/123/locations/global/workloadIdentityPools/jobbr/providers/github",
+            "GCP_DEPLOY_SERVICE_ACCOUNT": "jobbr-deployer@portfolio-383615.iam.gserviceaccount.com",
+            "JOBBR_ARTIFACT_REPOSITORY": "jobbr",
+        }
+        cases = [
+            {"JOBBR_RELEASE_AI_PROVIDER": ""},
+            {"JOBBR_RELEASE_AI_PROVIDER": "claude"},
+            {"JOBBR_RELEASE_AI_MODEL": "unexpected-model"},
+            {"JOBBR_AI_SECRET_REF": "jobbr-openai-api-key:1"},
+            {"JOBBR_RELEASE_AI_PROVIDER": "openai"},
+        ]
+        for provider in ("openai", "anthropic"):
+            good = {
+                "JOBBR_RELEASE_AI_PROVIDER": provider,
+                "JOBBR_RELEASE_AI_MODEL": "reviewed-model",
+                "JOBBR_AI_SECRET_REF": "jobbr-" + provider + "-api-key:1",
+            }
+            cases.extend(
+                [
+                    good | {"JOBBR_RELEASE_AI_MODEL": "model,OTHER=value"},
+                    good | {"JOBBR_AI_SECRET_REF": "jobbr-other-api-key:1"},
+                    good
+                    | {"JOBBR_AI_SECRET_REF": "jobbr-" + provider + "-api-key:latest"},
+                    good | {"JOBBR_AI_SECRET_REF": "jobbr-" + provider + "-api-key:0"},
+                    good | {"JOBBR_AI_SECRET_REF": "not-a-real-credential"},
+                ]
+            )
+        for case in cases:
+            with self.subTest(case=case):
+                self.calls.clear()
+                with self.assertRaises(SystemExit):
+                    self.execute(
+                        "Validate reviewed production configuration before Google auth",
+                        base | case,
+                    )
+                self.assertEqual(self.calls, [])
+        self.execute(
+            "Validate reviewed production configuration before Google auth", base
+        )
+
+    def test_ai_off_rejects_all_inherited_key_aliases(self):
+        for name in (
+            "JOBBR_OPENAI_API_KEY",
+            "OPENAI_API_KEY",
+            "JOBBR_ANTHROPIC_API_KEY",
+            "ANTHROPIC_API_KEY",
+        ):
+            for step in (
+                "Verify existing dedicated resources and enabled pinned secret versions",
+                "Update only the existing Jobbr service with pinned image and secret references",
+            ):
+                with self.subTest(name=name, step=step):
+                    self.service["spec"]["template"]["spec"]["containers"][0] = (
+                        container()
+                    )
+                    self.revision["spec"]["containers"][0] = container()
+                    target = (
+                        self.service["spec"]["template"]["spec"]["containers"][0]
+                        if step.startswith("Verify")
+                        else self.revision["spec"]["containers"][0]
+                    )
+                    target["env"].append(
+                        {"name": name, "value": "not-a-real-credential"}
+                    )
+                    self.calls.clear()
+                    with self.assertRaises(SystemExit):
+                        self.execute(step)
+                    self.assert_no_promotion()
+
+    def test_provider_model_key_and_alias_mismatches_deny_release(self):
+        for provider in ("openai", "anthropic"):
+            for case in (
+                "provider",
+                "model",
+                "key-name",
+                "latest",
+                "plaintext",
+                "alias",
+                "unselected",
+            ):
+                for step in (
+                    "Verify existing dedicated resources and enabled pinned secret versions",
+                    "Update only the existing Jobbr service with pinned image and secret references",
+                ):
+                    with self.subTest(provider=provider, case=case, step=step):
+                        extra = self.ai_fixture(provider)
+                        target = (
+                            self.service["spec"]["template"]["spec"]["containers"][0]
+                            if step.startswith("Verify")
+                            else self.revision["spec"]["containers"][0]
+                        )
+                        if case == "provider":
+                            target["env"][-3]["value"] = "other"
+                        elif case == "model":
+                            target["env"][-2]["value"] = "unreviewed-model"
+                        elif case == "key-name":
+                            target["env"][-1]["valueFrom"]["secretKeyRef"]["name"] = (
+                                "wrong-provider-key"
+                            )
+                        elif case == "latest":
+                            target["env"][-1]["valueFrom"]["secretKeyRef"]["key"] = (
+                                "latest"
+                            )
+                        elif case == "plaintext":
+                            target["env"][-1] = {
+                                "name": target["env"][-1]["name"],
+                                "value": "not-a-real-credential",
+                            }
+                        else:
+                            name = (
+                                "OPENAI_API_KEY"
+                                if case == "alias"
+                                else "JOBBR_ANTHROPIC_API_KEY"
+                                if provider == "openai"
+                                else "JOBBR_OPENAI_API_KEY"
+                            )
+                            target["env"].append(
+                                {"name": name, "value": "not-a-real-credential"}
+                            )
+                        self.calls.clear()
+                        with self.assertRaises(SystemExit):
+                            self.execute(step, extra)
+                        self.assert_no_promotion()
+
+    def test_immutable_inputs_need_no_checkout_or_ai_configuration(self):
+        with patch.dict(
+            os.environ,
+            {
+                "IMAGE_DIGEST": "sha256:" + "a" * 64,
+                "SOURCE_COMMIT": "b" * 40,
+                "CI_RUN_ID": "123",
+            },
+            clear=True,
+        ):
+            exec(embedded("Validate immutable release inputs"), {})  # noqa: S102
 
     def test_all_embedded_python_compiles(self):
         for block in WORKFLOW.read_text().split("          python - <<'PY'\n")[1:]:

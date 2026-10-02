@@ -130,6 +130,9 @@ jobs:
       JOBBR_DATABASE_SECRET_REF: ${{ vars.JOBBR_DATABASE_SECRET_REF }}
       JOBBR_API_TOKEN_SECRET_REF: ${{ vars.JOBBR_API_TOKEN_SECRET_REF }}
       JOBBR_AUTH_STORE_SECRET_REF: ${{ vars.JOBBR_AUTH_STORE_SECRET_REF }}
+      JOBBR_RELEASE_AI_PROVIDER: ${{ vars.JOBBR_RELEASE_AI_PROVIDER }}
+      JOBBR_RELEASE_AI_MODEL: ${{ vars.JOBBR_RELEASE_AI_MODEL }}
+      JOBBR_AI_SECRET_REF: ${{ vars.JOBBR_AI_SECRET_REF }}
       VERIFIED_IMAGE: ${{ needs.verify.outputs.image }}
       VERIFIED_DIGEST: ${{ needs.verify.outputs.digest }}
       SOURCE_COMMIT: ${{ needs.verify.outputs.source_commit }}
@@ -142,6 +145,8 @@ jobs:
         run: |
           python - <<'PY'
           import os, re
+          from scripts.cloud_run_ai_policy import reviewed_ai
+          reviewed_ai(os.environ)
           rules = {
               "GITHUB_RUN_ID": r"[1-9][0-9]{0,19}",
               "GITHUB_RUN_ATTEMPT": r"[1-9][0-9]{0,4}",
@@ -173,6 +178,8 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, subprocess
+          from scripts.cloud_run_ai_policy import reviewed_ai, verify_ai
+          ai = reviewed_ai(os.environ)
           project, region = os.environ["GCP_PROJECT"], os.environ["GCP_REGION"]
           def query(args):
               result = subprocess.run(["gcloud", *args, "--project=" + project, "--quiet"],
@@ -188,6 +195,7 @@ jobs:
           names = [entry.get("name") for entry in values]
           if len(names) != len(set(names)):
               raise SystemExit("Existing service has ambiguous environment settings.")
+          verify_ai(values, ai)
           environment = {entry.get("name"): entry.get("value") for entry in values}
           expected = {"JOBBR_PRIVATE_INSTANCE": "true", "JOBBR_SEED_DEMO": "false", "JOBBR_OPENAI_AUTH_ENABLED": "false"}
           if any(environment.get(name) != value for name, value in expected.items()):
@@ -203,8 +211,9 @@ jobs:
                                          "--format=json(format,mode)"]))
           if repository.get("format") != "DOCKER" or repository.get("mode") != "STANDARD_REPOSITORY":
               raise SystemExit("Dedicated Jobbr image repository is not supported.")
-          for name in ("JOBBR_DATABASE_SECRET_REF", "JOBBR_API_TOKEN_SECRET_REF", "JOBBR_AUTH_STORE_SECRET_REF"):
-              secret, version = os.environ[name].split(":")
+          references = [os.environ[name] for name in ("JOBBR_DATABASE_SECRET_REF", "JOBBR_API_TOKEN_SECRET_REF", "JOBBR_AUTH_STORE_SECRET_REF")]
+          for reference in references + list(ai.secret_refs.values()):
+              secret, version = reference.split(":")
               if query(["secrets", "versions", "describe", version, "--secret=" + secret, "--format=value(state)"]) != "ENABLED":
                   raise SystemExit("A pinned Jobbr secret version is unavailable or disabled.")
           PY
@@ -266,6 +275,8 @@ jobs:
         run: |
           python - <<'PY'
           import json, os, re, subprocess
+          from scripts.cloud_run_ai_policy import reviewed_ai, verify_ai
+          ai = reviewed_ai(os.environ)
           run_id, attempt = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"]
           if not re.fullmatch(r"[1-9][0-9]{0,19}", run_id) or not re.fullmatch(r"[1-9][0-9]{0,4}", attempt):
               raise SystemExit("Invalid release revision identity.")
@@ -275,14 +286,16 @@ jobs:
               "JOBBR_DATABASE_URL=" + os.environ["JOBBR_DATABASE_SECRET_REF"],
               "JOBBR_API_TOKEN=" + os.environ["JOBBR_API_TOKEN_SECRET_REF"],
               "JOBBR_OPENAI_STORE_KEY=" + os.environ["JOBBR_AUTH_STORE_SECRET_REF"],
+              *[name + "=" + reference for name, reference in ai.secret_refs.items()],
           ])
+          reviewed_env = {"JOBBR_PRIVATE_INSTANCE": "true", "JOBBR_SEED_DEMO": "false", "JOBBR_OPENAI_AUTH_ENABLED": "false", **ai.values}
           result = subprocess.run([
               "gcloud", "run", "services", "update", "jobbr", "--project=portfolio-383615", "--region=us-central1",
               "--image=" + os.environ["DEPLOY_IMAGE"], "--revision-suffix=" + suffix,
               "--service-account=" + os.environ["JOBBR_RUNTIME_SERVICE_ACCOUNT"],
               "--execution-environment=gen2", "--set-cloudsql-instances=portfolio-383615:us-central1:jobbr-pg",
               "--update-secrets=" + secrets,
-              "--update-env-vars=JOBBR_PRIVATE_INSTANCE=true,JOBBR_SEED_DEMO=false,JOBBR_OPENAI_AUTH_ENABLED=false",
+              "--update-env-vars=" + ",".join(name + "=" + value for name, value in reviewed_env.items()),
               "--port=8000", "--max-instances=1", "--min-instances=0", "--concurrency=8",
               "--timeout=120", "--cpu=1", "--memory=512Mi", "--no-traffic", "--deploy-health-check", "--quiet",
               "--format=value(status.latestReadyRevisionName)",
@@ -312,6 +325,7 @@ jobs:
           names = [entry.get("name") for entry in entries]
           if len(names) != len(set(names)):
               raise SystemExit("Revision environment is ambiguous; traffic is unchanged.")
+          verify_ai(entries, ai)
           environment = {entry.get("name"): entry for entry in entries}
           for name, value in {"JOBBR_PRIVATE_INSTANCE": "true", "JOBBR_SEED_DEMO": "false", "JOBBR_OPENAI_AUTH_ENABLED": "false"}.items():
               if environment.get(name, {}).get("value") != value:

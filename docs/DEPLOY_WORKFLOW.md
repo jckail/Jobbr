@@ -12,7 +12,7 @@ CI currently tests and scans an image artifact before `image-publish` downloads 
 
 ## Production configuration
 
-Configure these GitHub variables in the protected `production` environment. Empty, different-resource or `latest` references fail before Google authentication.
+Configure these GitHub variables in the protected `production` environment. Missing policy, different-resource or `latest` references fail before Google authentication. AI-off intentionally uses empty model/key-reference values.
 
 | Variable | Required value |
 | --- | --- |
@@ -23,14 +23,34 @@ Configure these GitHub variables in the protected `production` environment. Empt
 | `JOBBR_DATABASE_SECRET_REF` | `jobbr-database-url:N`, positive numeric version |
 | `JOBBR_API_TOKEN_SECRET_REF` | `jobbr-instance-token:N`, positive numeric version |
 | `JOBBR_AUTH_STORE_SECRET_REF` | `jobbr-auth-store-key:N`, positive numeric version |
+| `JOBBR_RELEASE_AI_PROVIDER` | Explicit `off`, `openai`, or `anthropic` |
+| `JOBBR_RELEASE_AI_MODEL` | Exact reviewed model for enabled AI; empty for `off` |
+| `JOBBR_AI_SECRET_REF` | `jobbr-openai-api-key:N` or `jobbr-anthropic-api-key:N`, matching the provider; empty for `off` |
 
 Restrict the environment to main and configure required reviewers where supported. Configure [Google Workload Identity Federation](https://github.com/google-github-actions/auth) separately, bound to the exact numeric GitHub repository ID and owner ID, `ref=refs/heads/main`, the exact `workflow_ref` `jckail/Jobbr/.github/workflows/deploy-cloud-run.yml@refs/heads/main`, and subject `repo:jckail/Jobbr:environment:production`. Validate the actual issued claims and audience before enabling the provider; the environment name is represented in the subject. Do not broaden trust to all repositories, branches or workflows. The workflow never creates a provider or service-account key.
 
-Grant the deploy account only the required existing-resource permissions: update the Jobbr Cloud Run service/revisions/traffic; impersonate the dedicated runtime account; upload/read images in the dedicated Artifact Registry repository; read the dedicated Cloud SQL instance, runtime account and secret-version metadata. Project-level SQL instance metadata reads may need a small custom role because this API is project scoped. Runtime permissions belong to `jobbr-runtime`: Cloud SQL Client and Secret Manager Secret Accessor for the three dedicated secrets. The deploy job does not read secret payloads. Do not grant Owner/Editor or Secret Accessor to the deploy account merely to make these checks work.
+Grant the deploy account only the required existing-resource permissions: update the Jobbr Cloud Run service/revisions/traffic; impersonate the dedicated runtime account; upload/read images in the dedicated Artifact Registry repository; read the dedicated Cloud SQL instance, runtime account and secret-version metadata. Project-level SQL instance metadata reads may need a small custom role because this API is project scoped. Runtime permissions belong to `jobbr-runtime`: Cloud SQL Client and Secret Manager Secret Accessor for the three dedicated secrets. If AI is enabled, the runtime also needs access to the selected dedicated provider-key secret, and the deploy account needs its version metadata read permission. The deploy job does not read secret payloads. Do not grant Owner/Editor or Secret Accessor to the deploy account merely to make these checks work.
 
 The existing service must explicitly declare `JOBBR_PRIVATE_INSTANCE=true`, `JOBBR_SEED_DEMO=false`, and `JOBBR_OPENAI_AUTH_ENABLED=false`, with one container and an HTTP `/healthz` startup probe on port 8000. Missing values, an OAuth-enabled service, or a different probe fail closed after Google authentication but before any service update. This workflow cannot convert an OAuth service into token mode. Other existing authentication settings are preserved.
 
 All of the following must already exist: the service `jobbr`, runtime account, RUNNABLE PostgreSQL instance `jobbr-pg` with connection `portfolio-383615:us-central1:jobbr-pg`, standard Docker Artifact Registry repository `jobbr`, and the three enabled numeric secret versions. The database secret must contain the reviewed dedicated PostgreSQL connection string using the Cloud SQL Unix socket. The workflow does not initialize resources, rotate credentials or enable OAuth.
+
+AI release policy is implemented in `scripts/cloud_run_ai_policy.py`. The existing
+service must already declare the reviewed server provider and selected model,
+and its selected key must be the exact reviewed numeric secret reference. No
+unselected or global fallback key aliases are permitted. For `off`, explicitly
+declare `JOBBR_AI_PROVIDER=openai` and omit all four API-key aliases; no model or
+provider-secret release variable is allowed. This is an explicit no-key policy,
+not a paid-provider default.
+
+The workflow refuses AI-policy conversion or cleanup of inherited credentials.
+Prepare the matching existing-service configuration separately under owner
+authorization; the source patch creates no API-key secret and runs no provider
+call. An enabled release verifies the selected secret version is ENABLED,
+writes explicit provider/model/key bindings, and checks those bindings again on
+the exact ready revision before promotion. All existing image/provenance,
+private token mode, runtime identity, SQL, startup probe and core secret guards
+remain required. Real provider generation remains separate acceptance.
 
 ## Digest-preserving registry mirror
 
@@ -57,4 +77,4 @@ For the final block, mock `subprocess.run`: return the exact `jobbr-release-ID-A
 
 ## Offline regression checks
 
-Run `python3 scripts/test_cloud_run_release.py` without credentials. The seven test methods include subcases for unexpected OAuth/public/demo settings, missing or TCP startup probes, ambiguous environment variables, concurrent revision selection, readiness, image/identity/SQL mismatches, changed or plaintext secret references and invalid revision identifiers. All subprocesses are mocked. Hosted backend CI runs these guards before installing backend dependencies. Passing these checks proves fail-closed behavior for the fixtures; it does not validate Google IAM, an actual rollout, provider login or authenticated database smoke.
+Run `python3 scripts/test_cloud_run_release.py` without credentials. The twelve test methods retain the original seven release guards and add subcases for unexpected OAuth/public/demo settings, missing or TCP startup probes, ambiguous environment variables, concurrent revision selection, readiness, image/identity/SQL mismatches, changed or plaintext secret references and invalid revision identifiers. AI cases cover both providers, explicit off, invalid selector/model/reference, inherited aliases and revision key/model mismatches. All subprocesses are mocked. Hosted backend CI runs these guards before installing backend dependencies. Passing these checks proves fail-closed behavior for the fixtures; it does not validate Google IAM, an actual rollout, provider login or authenticated database smoke.
