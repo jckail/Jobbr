@@ -1,9 +1,9 @@
 # Authenticated Jobbr MCP
 
-This increment extends the v2 application on `claude/beautiful-sagan-mtnuvk`
-(base `d9d6947`), not the legacy prototype on `main`. It uses the same SQLModel
-Company, Job, Extraction and Application tables. This patch changes neither the
-schema, website login nor deployment configuration. It is implemented and locally
+This resource server extends the v2 application on `main`. It uses the existing
+SQLModel Company, Job, Extraction and Application tables and preserves canonical
+job identities when filtering the shared repository queries. It changes neither
+the schema, website login nor deployment configuration. It is implemented and locally
 testable; it is **not deployed or connected to ChatGPT**.
 
 ## Tools and permissions
@@ -27,6 +27,8 @@ read/write annotations; authorization is enforced independently of those hints.
 Search pages default to 25 and cap at 50; use the returned `next_after_id`. Text and
 lists are bounded. Role details omit raw postings, resumes, application notes and
 provider error payloads. Shortlist notes require their separate read scope.
+Imported recruiter review summaries also remain in the scoped shortlist notes,
+including for older imports that duplicated the summary into ordinary role context.
 Posting content is untrusted source data, not instructions to an agent.
 
 `posted_at` is the parsed posting date and remains null when unknown.

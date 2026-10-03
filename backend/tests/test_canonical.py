@@ -4,6 +4,7 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from jobbr import canonical_repo as repo
+from jobbr import repo as read_repo
 from jobbr.canonical import Identity, identity_for_url, job_baseline, resource_key
 from jobbr.canonical_models import CaptureLease, JobExternalIdentity
 from jobbr.models import Company, Job, pk
@@ -59,6 +60,20 @@ def add_job(s, url):
     s.add(job)
     s.commit()
     return job
+
+
+def test_filtered_role_queries_preserve_stored_canonical_identity(session):
+    job = add_job(session, "https://synthetic.example/role")
+    identity = Identity("greenhouse", "Synthetic", "42")
+    repo.attach_identity(session, identity, job)
+    session.commit()
+
+    rows = read_repo.job_rows(
+        session, None, query="Engineer", company_id=1, after_id=0, limit=1, shortlist=True
+    )
+    assert len(rows) == 1
+    assert rows[0].job.id == job.id
+    assert rows[0].identity == identity
 
 
 def test_lazy_adoption_preserves_urls_and_does_not_merge_duplicates(session):

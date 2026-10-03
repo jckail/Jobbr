@@ -30,6 +30,7 @@ from jobbr.models import (
     Stage,
     utcnow,
 )
+from jobbr.proxy_import import import_leads
 from tests.test_postgres import postgres  # noqa: F401 - shared isolated PostgreSQL fixture
 
 RESOURCE = "https://jobbr.test/jobbr/mcp"
@@ -181,6 +182,32 @@ def test_initialize_discovery_and_tools(client, sign):
         assert tool["annotations"]["destructiveHint"] is is_write
         assert tool["_meta"]["securitySchemes"][0]["type"] == "oauth2"
         assert "owner_subject" not in tool["inputSchema"]["properties"]
+
+
+def test_imported_review_summary_requires_shortlist_scope_including_legacy_rows(client, sign):
+    private_review = "PRIVATE RECRUITER REVIEW SUMMARY"
+    with Session(db.get_engine()) as session:
+        import_leads(
+            session,
+            [{"id": "sig_scope_test", "summary": private_review, "role_title": "Imported lead"}],
+            apply=True,
+        )
+        job = session.exec(select(Job).where(Job.title == "Imported lead")).one()
+        role_id = job.id
+        assert job.summary is None
+        # Reproduce the old importer so the guard also protects existing databases.
+        job.summary = private_review
+        session.add(job)
+        session.commit()
+
+    role = call(client, sign(scope=READ_SCOPE), "get_role", role_id=role_id)
+    assert not role.get("isError")
+    assert private_review not in json.dumps(role)
+    denied = call(client, sign(scope=READ_SCOPE), "list_shortlist")
+    assert denied["isError"]
+    assert private_review not in json.dumps(denied)
+    shortlist = call(client, sign(scope=f"{READ_SCOPE} {SHORTLIST_SCOPE}"), "list_shortlist")
+    assert private_review in json.dumps(shortlist)
 
 
 @pytest.mark.parametrize("method", ["get", "post", "delete"])

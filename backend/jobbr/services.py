@@ -38,6 +38,7 @@ from .models import (
     utcnow,
 )
 from .parsing import html_to_text, parse_date
+from .proxy_import import is_review_evidence
 from .safefetch import FetchError, fetch_html
 from .schemas import ApplicationIn, JobCreate, JobPatch, ProfileIn
 from .skills import find_skills, normalize_skills
@@ -511,6 +512,11 @@ def reextract(s: Session, job: Job, *, settings: Settings | None = None) -> Job:
         )
     if not current.raw_text:
         raise UserError("No stored text for this job.")
+    if is_review_evidence(current.raw_text):
+        raise UserError(
+            "Recruiter review evidence cannot be re-extracted as a posting. "
+            "Add the verified job posting instead."
+        )
     identity = canonical.identity_for_url(current.url)
     key = (
         canonical.resource_key(current.url, identity)

@@ -16,6 +16,15 @@ from .db import get_engine
 from .models import Application, Company, Job, JobStatus, Stage, pk
 
 
+def is_review_evidence(raw_text: str | None) -> bool:
+    """Recognize the existing private evidence envelope without exposing its contents."""
+    try:
+        evidence = json.loads(raw_text or "")
+    except (ValueError, RecursionError):
+        return False
+    return isinstance(evidence, dict) and evidence.get("source") == "linkedin_export"
+
+
 def reviewed_leads(source: Path) -> list[dict[str, Any]]:
     if not source.is_file():
         raise ValueError("Proxy database must already exist.")
@@ -75,7 +84,6 @@ def import_leads(
             company_id=pk(company),
             title=lead.get("role_title") or "Recruiting lead (title not supplied)",
             status=JobStatus.unknown,
-            summary=lead.get("summary"),
             content_hash=source_key,
             raw_text=json.dumps(evidence, ensure_ascii=False),
             # A message date is not a posting/discovery/refresh date.

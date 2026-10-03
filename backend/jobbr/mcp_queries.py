@@ -9,6 +9,7 @@ from sqlmodel import Session, col, select
 
 from . import repo
 from .models import Application, Company, Extraction, Stage, utcnow
+from .proxy_import import is_review_evidence
 
 Json = dict[str, Any]
 
@@ -156,13 +157,16 @@ class Catalog:
             }
             if freshness_only:
                 return {"role_id": role_id, **freshness}
+            context = row.job.model_dump(
+                include={"summary", "responsibilities", "qualifications", "ai_take"}
+            )
+            # Earlier proxy imports duplicated private review notes into Job.summary.
+            # Keep those existing rows behind the shortlist scope without a data migration.
+            if is_review_evidence(row.job.raw_text):
+                context["summary"] = None
             return {
                 **_role(row),
-                "context": _bounded(
-                    row.job.model_dump(
-                        include={"summary", "responsibilities", "qualifications", "ai_take"}
-                    )
-                ),
+                "context": _bounded(context),
                 "provenance": [
                     {
                         "extraction_id": item.id,

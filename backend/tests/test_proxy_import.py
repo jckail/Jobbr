@@ -4,8 +4,29 @@ from pathlib import Path
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from jobbr import db
 from jobbr.models import Application, Job, JobStatus, Stage
 from jobbr.proxy_import import import_leads, reviewed_leads
+from tests.conftest import API
+
+
+def test_private_review_evidence_cannot_be_reextracted(client, monkeypatch):
+    def forbidden_provider(*args, **kwargs):
+        pytest.fail("Private recruiter evidence must never reach posting extraction")
+
+    monkeypatch.setattr("jobbr.services.extract", forbidden_provider)
+    with Session(db.get_engine()) as session:
+        import_leads(session, [{"id": "sig_no_extract", "summary": "Private review"}], apply=True)
+        job = session.exec(select(Job)).one()
+        job_id, original = job.id, job.raw_text
+
+    response = client.post(f"{API}/jobs/{job_id}/reextract")
+    assert response.status_code == 422
+    assert "cannot be re-extracted" in response.json()["detail"]
+    with Session(db.get_engine()) as session:
+        job = session.get(Job, job_id)
+        assert job.raw_text == original
+        assert job.summary is None
 
 
 def test_reviewed_leads_preview_idempotence_and_user_edits():

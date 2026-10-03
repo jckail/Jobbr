@@ -5,9 +5,8 @@ Jobbr is the job-search shortlist and pipeline. The companion
 message/contact evidence graph and official LinkedIn export importer. These are
 two storage domains in one workflow, not interchangeable database schemas.
 
-The `feat/linkedin-consolidation` branch includes the authenticated Jobbr MCP work
-from `feat/jobbr-mcp-v2` and the reviewed-lead bridge. The legacy `main` prototype
-and dirty legacy checkouts are not the integration target.
+The reviewed-lead bridge and authenticated MCP interface use the current v2 data
+layer on `main`. The original prototype files remain separate from these entrypoints.
 
 ## Data boundary
 
@@ -16,7 +15,11 @@ and dirty legacy checkouts are not the integration target.
 only `reviewing` signals are eligible. The bridge does not copy private message
 bodies, emails, phone numbers, raw exports, classifier candidates or connection
 lists. Contact names/profile URLs, outreach time, source IDs and the curated
-review summary stay attached in shortlist notes and a provenance envelope.
+review summary stay attached in shortlist notes and a provenance envelope. The
+review summary is not copied into ordinary role context; MCP shortlist permission
+is required to read it. The current source query is limited to the first 1,000
+reviewed signals by ID and has no cursor; larger archives need a pagination extension
+before claiming complete coverage.
 
 All new roles have unknown opening status. Posting date stays unknown; Jobbr
 discovery time is separate from the retained original outreach date. Unknown
@@ -25,6 +28,8 @@ review summary rather than converted into annual pay without evidence. A stable
 source-signal hash prevents duplicates. Existing records, notes and pipeline
 stages are never replaced on subsequent imports. Later source corrections require
 explicit review; this bridge is insert-only, not an automatic refresh service.
+Re-extraction rejects these evidence envelopes before calling a provider; add a
+verified job posting separately when one becomes available.
 
 ## Existing local Docker installations
 
@@ -47,13 +52,10 @@ role/company/shortlist domain; see [MCP.md](MCP.md). Its external OAuth provider
 client/owner binding, deployment and real ChatGPT connection remain separate
 setup work. A code branch is not proof of a live authenticated connection.
 
-## Verified local milestone, 2026-10-02
+## Verification
 
-The real local run backed up Jobbr consistently, imported seven reviewed leads
-into seven Saved entries, then previewed again: zero new entries and seven
-existing entries. All seven retain unknown opening status and no posting date.
-Focused synthetic tests cover preview behavior, repeat-import deduplication,
-preservation of edited application stages/notes, and unknown employer/title data.
-No private data is committed. The older LinkedIn export's message/contact counts
-are snapshot counts; newer messages require another official export while live
-LinkedIn capture is disabled.
+Synthetic tests cover preview behavior, a read-only source, exclusion of unreviewed
+signals, repeat-import deduplication, preservation of edited application stages
+and notes, invalid-batch rejection, and unknown employer/title data. These tests
+do not access a live archive or import personal records. Review and back up the
+intended destination before an actual import.
