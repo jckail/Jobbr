@@ -1,0 +1,26 @@
+# Run explicitly alongside the existing local Jobbr and proxy installations.
+# Preview: docker compose -f compose.proxy-import.yaml run --rm import
+# Apply:   docker compose -f compose.proxy-import.yaml run --rm import --proxy-db /proxy/graph.db --apply
+services:
+  import:
+    image: jobbr:local
+    working_dir: /integration
+    entrypoint: [python, -m, jobbr.proxy_import]
+    command: [--proxy-db, /proxy/graph.db]
+    environment:
+      JOBBR_DATABASE_URL: sqlite:////data/jobbr.db
+    volumes:
+      - ./backend:/integration:ro
+      - proxy-data:/proxy:ro
+      - jobbr-data:/data
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+volumes:
+  proxy-data:
+    external: true
+    name: ${JOBBR_PROXY_VOLUME:-jobsearch-proxy-app_jobsearch-data}
+  jobbr-data:
+    external: true
+    name: ${JOBBR_DATA_VOLUME:-jobbr-v2_jobbr-data}

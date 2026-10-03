@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import and_, delete, func
+from sqlalchemy import String, and_, cast, delete, func, or_
 from sqlmodel import Session, col, select
 
 from . import canonical_repo
@@ -41,7 +41,17 @@ class JobRow:
         return self.match.score if self.match else None
 
 
-def job_rows(s: Session, profile_id: int | None, job_id: int | None = None) -> list[JobRow]:
+def job_rows(
+    s: Session,
+    profile_id: int | None,
+    job_id: int | None = None,
+    *,
+    query: str | None = None,
+    company_id: int | None = None,
+    after_id: int = 0,
+    limit: int | None = None,
+    shortlist: bool = False,
+) -> list[JobRow]:
     stmt = (
         select(Job, Company, Match, Application)
         .join(Company, col(Company.id) == col(Job.company_id))
@@ -53,6 +63,23 @@ def job_rows(s: Session, profile_id: int | None, job_id: int | None = None) -> l
     )
     if job_id is not None:
         stmt = stmt.where(col(Job.id) == job_id)
+    if query:
+        pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        stmt = stmt.where(
+            or_(
+                col(Job.title).ilike(pattern, escape="\\"),
+                col(Company.name).ilike(pattern, escape="\\"),
+                col(Job.department).ilike(pattern, escape="\\"),
+                cast(Job.skills, String).ilike(pattern, escape="\\"),
+            )
+        )
+    if company_id is not None:
+        stmt = stmt.where(Job.company_id == company_id)
+    if shortlist:
+        # Matches the existing UI: an untracked role is implicitly in Saved.
+        stmt = stmt.where(or_(col(Application.id).is_(None), col(Application.stage) == Stage.saved))
+    if limit is not None:
+        stmt = stmt.where(col(Job.id) > after_id).order_by(col(Job.id)).limit(limit)
     rows = s.exec(stmt).all()
     identities = canonical_repo.saved_identities(s, [row[0] for row in rows])
     return [JobRow(*row, identity=identities[pk(row[0])]) for row in rows]

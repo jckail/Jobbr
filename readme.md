@@ -68,3 +68,15 @@ Production at `https://jckail.com/jobbr` remains pending local acceptance, regis
 | `SEED_DEMO` | `false` | Load demo data into an empty DB |
 
 Private production access uses `JOBBR_PRIVATE_INSTANCE=true` with an API token or configured OpenAI sign-in. See [authentication](docs/AUTH.md), [AI behavior](docs/AI.md), and [database migrations](docs/DATABASE.md). The database is currently single-owner; sign-in does not yet imply multi-user isolation.
+
+## MCP access for assistants
+
+An optional [authenticated MCP interface](docs/MCP.md) exposes company/role search,
+skills and team context, source provenance, distinct posting/discovery dates,
+stored refresh status, and the Saved shortlist through the existing database.
+It validates resource-bound OAuth access tokens and admits only the configured
+database owner. Shortlist-note writes are separately scoped and disabled by
+default. Run it with `uvicorn jobbr.mcp_server:create_app --factory` after the
+documented configuration. It is not deployed or connected to ChatGPT; external
+OAuth setup and live acceptance remain required. Website Sign in with ChatGPT
+remains the separate, registration-gated identity flow described in AUTH.md.
