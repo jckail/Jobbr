@@ -15,8 +15,13 @@ Confirm the selected project's billing, relevant APIs and deployment identity's
 permissions without creating a replacement project merely because the CLI has no
 default project. Use explicit project/context arguments throughout deployment.
 
-Release from the exact reviewed commit. The current workflow publishes only a
-successful `main` push; a successful draft/PR run does not exercise publication.
+Release from the exact reviewed commit. Automatic hosted CI/publication is now
+disabled; see [LOCAL_CI.md](LOCAL_CI.md). The following hosted publication and
+attestation requirements describe the existing historical release path. Do not
+treat a new local build as satisfying them; a new local publication/provenance
+path requires separate review before dispatching the unchanged manual deployment
+workflow. The previous workflow published only a successful `main` push; a
+successful draft/PR run did not exercise publication.
 Require successful publication and attestation verification in that main run, then
 independently verify the resulting image digest as described in
 [CI_SECURITY.md](CI_SECURITY.md). Replace

@@ -1,5 +1,14 @@
 # CI security gates
 
+Automatic hosted CI is retired; use [LOCAL_CI.md](LOCAL_CI.md) for the required
+local gates and exact-source evidence. The previous workflow is preserved at
+[ci/hosted-ci.reference.yml](ci/hosted-ci.reference.yml) and cannot run from that
+location. Pushes and PRs no longer trigger those hosted checks or GHCR publication.
+The descriptions below document the historical hosted implementation and its
+verification limits; they do not claim current automation or new release provenance.
+
+## Historical hosted implementation
+
 The workflow keeps backend/Postgres, web and extension checks, dependency audits,
 container smoke tests and main-only GHCR publication. It adds no deployment. Draft
 branch pushes and pull requests still run checks. A shared concurrency key cancels
