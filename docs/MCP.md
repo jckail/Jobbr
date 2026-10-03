@@ -141,6 +141,39 @@ header and terminate TLS. Do not route legacy root APIs to it. Local tests use
 synthetic SQLModel records, ephemeral signing keys and mocked JWKS; they do not
 use any live Sheet, email, API keys, login sessions or production database.
 
+## Check MCP routing and readiness
+
+The default Docker/Compose command starts `jobbr.main:app`, the website. Its
+`/healthz` probe checks that process. The website's SPA fallback can return HTML
+with HTTP 200 for `GET /jobbr/mcp`; neither result establishes MCP availability.
+
+For an approved MCP deployment, verify these steps in order:
+
+1. Start the separate factory above and route both `/jobbr/mcp` and
+   `/.well-known/oauth-protected-resource/jobbr/mcp` to it. Discovery is at the
+   host root, outside `/jobbr`. The current `deploy/k8s.yaml` template routes only
+   `/jobbr` to the website and does not configure this separate MCP service.
+   Preserve the canonical Host header and existing website routes.
+2. Fetch discovery from the intended HTTPS host. Require HTTP 200 with JSON,
+   the exact configured `resource` URL, the expected issuer in
+   `authorization_servers`, and `jobbr:read` in `scopes_supported`. Reject HTML,
+   login pages, redirects to another service, and metadata for another resource.
+3. Send an unauthenticated MCP `initialize` POST with
+   `Accept: application/json, text/event-stream` and `Content-Type: application/json`.
+   Require HTTP 401 and a `WWW-Authenticate` Bearer challenge pointing to that
+   resource's metadata and advertising `jobbr:read`. HTTP 200 with a web page is
+   a routing failure; a missing challenge is incomplete MCP readiness.
+4. Using an already approved owner authorization, complete SDK initialization,
+   `tools/list`, and a bounded read against the intended database. Verify wrong
+   owner rejection and denial of shortlist notes without their additional scope.
+5. Record the exact source/image, runtime, canonical URL and checked date. A real
+   ChatGPT connection and scope escalation remain separate acceptance checks.
+
+Discovery and the unauthenticated challenge establish routing/configuration
+only. They do not establish live OAuth, authorized database access or ChatGPT
+connectivity. Use synthetic identities only for local fixtures; do not register
+a client or grant permissions as part of these routing checks.
+
 ## Sign in with ChatGPT is a separate flow
 
 The current application already implements the website OIDC flow with state,
