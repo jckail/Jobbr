@@ -42,7 +42,7 @@ erDiagram
 cd backend && uv sync --locked --extra dev && JOBBR_SEED_DEMO=1 .venv/bin/uvicorn jobbr.main:app --reload
 # UI   (proxies /jobbr/api to :8000)
 cd web && npm install && npm run dev        # http://localhost:5173/jobbr/
-# checks (same as CI)
+# source checks (full local release gates: docs/LOCAL_CI.md)
 (cd backend && .venv/bin/ruff check . && .venv/bin/ruff format --check . && .venv/bin/mypy jobbr && .venv/bin/pytest)
 (cd web && npm run check)
 ```
@@ -51,7 +51,7 @@ cd web && npm install && npm run dev        # http://localhost:5173/jobbr/
 
 Use [docs/LOCAL.md](docs/LOCAL.md) for the verified development workflow and explicit v2 Compose command. [docs/ROADMAP.md](docs/ROADMAP.md) tracks the full overhaul. [docs/DESIGN.md](docs/DESIGN.md) links the Superdesign prototype awaiting review.
 
-Production at `https://jckail.com/jobbr` remains pending local acceptance, registered OpenAI sign-in configuration and infrastructure verification. `deploy/k8s.yaml` intentionally requires an externally managed Secret and a verified commit image tag. Never apply it with placeholders. The image serves API and UI under `/jobbr` without ingress rewriting. CI checks backend, web and extension and smoke-tests the real image before publishing immutable commit tags on main.
+Production at `https://jckail.com/jobbr` remains pending local acceptance, registered OpenAI sign-in configuration and infrastructure verification. `deploy/k8s.yaml` intentionally requires an externally managed Secret and a verified commit image tag. Never apply it with placeholders. The image serves API and UI under `/jobbr` without ingress rewriting. [Local release gates](docs/LOCAL_CI.md) cover backend, web, extension, audits and disposable-image smoke. Automatic hosted CI and main image publication are disabled; new publication requires a separately reviewed local release path.
 
 ## Configuration (env, prefix `JOBBR_`)
 
