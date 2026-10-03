@@ -174,6 +174,27 @@ only. They do not establish live OAuth, authorized database access or ChatGPT
 connectivity. Use synthetic identities only for local fixtures; do not register
 a client or grant permissions as part of these routing checks.
 
+The public checks in steps 2 and 3 are available as a credential-free diagnostic:
+
+```sh
+python scripts/mcp_readiness.py --resource-url "$JOBBR_MCP_RESOURCE_URL" --issuer "$JOBBR_MCP_ISSUER"
+python scripts/test_mcp_readiness.py
+```
+
+Supply the already configured canonical URL and expected issuer, not a new client
+registration. Exit 0 means only discovery and the unauthenticated challenge match;
+the JSON always reports `authenticated_flow_checked: false`. Failures return exit
+1 without printing response bodies. The tool sends no credentials, follows no
+redirects and ignores environment proxy settings. Responses are limited to 64 KiB;
+the ten-second socket inactivity timeout is not a total request deadline. Run it
+only against the intended trusted endpoint.
+
+An optional `--probe-url` can target a matching path on a separate HTTPS endpoint
+or HTTP loopback listener. It uses that target's Host header, so loopback success
+does not verify canonical Host routing. Repeat against the canonical HTTPS URL
+before accepting external routing. These probes do not verify provider login,
+owner identity, database access, live OAuth or ChatGPT connectivity.
+
 ## Sign in with ChatGPT is a separate flow
 
 The current application already implements the website OIDC flow with state,
