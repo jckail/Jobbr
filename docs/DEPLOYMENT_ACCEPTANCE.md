@@ -79,6 +79,11 @@ Configure HTTPS, callback-query suppression in proxy access logs, and the
 appropriate transport/security headers at the edge. Confirm certificate issuance
 and renewal and that the existing site's certificate/routing remains intact.
 
+If MCP is part of the approved deployment, configure its separate runtime and
+both resource/discovery routes using [MCP.md](MCP.md#check-mcp-routing-and-readiness).
+The current website-only template does not provide MCP routing. A website health
+check or HTML HTTP 200 at `/jobbr/mcp` cannot satisfy that acceptance.
+
 ## Reviewed rollout and acceptance
 
 1. Save the final rendered manifest with the selected context, verified image
